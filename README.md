@@ -43,19 +43,6 @@ A React + Vite single-page application that uses Google's Gemini AI to intellige
    - Provide detailed feedback for each answer
 4. View your score and detailed results
 
-## Quiz Questions
-
-1. The capital city of France is ___.
-2. Water is made of two hydrogen atoms and one ___ atom.
-3. The largest planet in our solar system is ___.
-4. The chemical symbol for gold is ___.
-5. A hexagon has ___ sides.
-6. The process plants use to make food using sunlight is ___.
-7. The smallest prime number is ___.
-8. The currency used in Japan is the ___.
-9. The Great Wall is located in ___.
-10. One kilometer equals ___ meters.
-
 ## Technologies Used
 
 - React 18
