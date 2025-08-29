@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AlertTriangle, BarChart, CheckCircle, Clock, Database, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { hackathonData } from '../data/HackathonData';
-import { checkEvaluationExists, saveEvaluationError, saveEvaluationResults } from '../lib/databaseService';
+import { checkEvaluationExists, logProcessEvent, saveEvaluationError, saveEvaluationResults } from '../lib/databaseService';
 
 const BatchEvaluationProcessor = ({ users, onComplete }) => {
   const [currentUserIndex, setCurrentUserIndex] = useState(0);
@@ -13,6 +13,7 @@ const BatchEvaluationProcessor = ({ users, onComplete }) => {
   const [completedUsers, setCompletedUsers] = useState([]);
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [processedUsersCount, setProcessedUsersCount] = useState(0);
+  const [sessionId, setSessionId] = useState(null); // Session ID for logging
   const BATCH_SIZE = 5;
 
   // Load completed users from LocalStorage on component mount
@@ -212,14 +213,59 @@ Return ONLY a valid JSON object with this structure:
     
     // Generate a unique batch ID for database tracking
     const batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const batchStartTime = Date.now();
 
     console.log(`Starting Batch ${currentBatchIndex + 1}/${totalBatches} (Users ${batchStartIndex + 1}-${batchStartIndex + currentBatch.length}) - Batch ID: ${batchId}`);
 
+    // Log batch start
+    if (sessionId) {
+      await logProcessEvent({
+        sessionId,
+        batchId,
+        batchNumber: currentBatchIndex + 1,
+        totalBatches,
+        logLevel: 'INFO',
+        logType: 'BATCH_START',
+        message: `Starting batch ${currentBatchIndex + 1}/${totalBatches} with ${currentBatch.length} users`,
+        totalUsers: currentBatch.length,
+        totalSessionUsers: users.length,
+        details: {
+          batchUsers: currentBatch.map(u => u.email),
+          batchStartIndex: batchStartIndex + 1,
+          batchEndIndex: batchStartIndex + currentBatch.length
+        },
+        startedAt: new Date().toISOString()
+      });
+    }
     // Process current batch
     for (let i = 0; i < currentBatch.length; i++) {
       const user = currentBatch[i];
       const globalIndex = batchStartIndex + i;
+      const userStartTime = Date.now();
       setCurrentUserIndex(globalIndex);
+
+      // Log user processing start
+      if (sessionId) {
+        await logProcessEvent({
+          sessionId,
+          batchId,
+          batchNumber: currentBatchIndex + 1,
+          email: user.email,
+          userIndex: i + 1,
+          totalUsers: currentBatch.length,
+          globalUserIndex: globalIndex + 1,
+          totalSessionUsers: users.length,
+          logLevel: 'INFO',
+          logType: 'USER_PROCESSING_START',
+          message: `Starting evaluation for user ${globalIndex + 1}/${users.length}: ${user.email}`,
+          details: {
+            userCaseId: user.case_id || user.selected_case_id,
+            batchPosition: i + 1,
+            globalPosition: globalIndex + 1
+          },
+          startedAt: new Date().toISOString()
+        });
+      }
 
       try {
         console.log(`Processing user ${globalIndex + 1}/${users.length}: ${user.email} (Batch ${currentBatchIndex + 1}, User ${i + 1}/${currentBatch.length})`);
@@ -229,9 +275,47 @@ Return ONLY a valid JSON object with this structure:
         
         if (existingCheck.error) {
           console.warn(`Error checking existing evaluation for ${user.email}:`, existingCheck.error);
+          
+          // Log warning
+          if (sessionId) {
+            await logProcessEvent({
+              sessionId,
+              batchId,
+              email: user.email,
+              logLevel: 'WARN',
+              logType: 'DUPLICATE_CHECK_ERROR',
+              message: `Error checking existing evaluation for ${user.email}`,
+              errorMessage: existingCheck.error,
+              details: { checkError: existingCheck.error }
+            });
+          }
           // Continue with processing despite check error
         } else if (existingCheck.exists) {
+          const processingDuration = Date.now() - userStartTime;
           console.log(`Skipping ${user.email} - evaluation already exists with score: ${existingCheck.data.total_score}`);
+          
+          // Log user skip
+          if (sessionId) {
+            await logProcessEvent({
+              sessionId,
+              batchId,
+              email: user.email,
+              userIndex: i + 1,
+              globalUserIndex: globalIndex + 1,
+              logLevel: 'INFO',
+              logType: 'USER_SKIPPED',
+              message: `Skipped ${user.email} - evaluation already exists`,
+              processingStatus: 'skipped',
+              totalScore: existingCheck.data.total_score,
+              processingDurationMs: processingDuration,
+              details: {
+                reason: 'Already evaluated',
+                existingScore: existingCheck.data.total_score,
+                existingProcessedAt: existingCheck.data.processed_at
+              },
+              completedAt: new Date().toISOString()
+            });
+          }
           
           // Add to results as already processed
           const userResult = {
@@ -255,11 +339,14 @@ Return ONLY a valid JSON object with this structure:
         }
 
         const evaluationResult = await evaluateUser(user);
+        const processingDuration = Date.now() - userStartTime;
 
         // Save to LocalStorage immediately after successful evaluation
         saveUserToLocalStorage(user.email, evaluationResult.totalScore);
 
         // Save to database
+        let dbSaveSuccessful = false;
+        let dbErrorMessage = null;
         try {
           const dbResult = await saveEvaluationResults({
             email: user.email,
@@ -271,11 +358,42 @@ Return ONLY a valid JSON object with this structure:
           
           if (dbResult.error) {
             console.error(`Database save failed for ${user.email}:`, dbResult.error);
+            dbErrorMessage = dbResult.error;
           } else {
             console.log(`Successfully saved ${user.email} evaluation to database`);
+            dbSaveSuccessful = true;
           }
         } catch (dbError) {
           console.error(`Database save error for ${user.email}:`, dbError);
+          dbErrorMessage = dbError.message;
+        }
+
+        // Log successful user processing
+        if (sessionId) {
+          await logProcessEvent({
+            sessionId,
+            batchId,
+            email: user.email,
+            userIndex: i + 1,
+            globalUserIndex: globalIndex + 1,
+            logLevel: 'INFO',
+            logType: 'USER_SUCCESS',
+            message: `Successfully processed ${user.email} with score ${evaluationResult.totalScore}`,
+            processingStatus: 'success',
+            totalScore: evaluationResult.totalScore,
+            processingDurationMs: processingDuration,
+            apiCallsMade: 1, // One Gemini API call
+            dbSaveAttempted: true,
+            dbSaveSuccessful,
+            dbErrorMessage,
+            details: {
+              stageScores: evaluationResult.stageScores,
+              overallFeedback: evaluationResult.overallFeedback?.substring(0, 200) + '...', // Truncate for logging
+              recommendationsCount: evaluationResult.recommendations?.length || 0
+            },
+            aiModel: 'gemini-2.0-flash-exp',
+            completedAt: new Date().toISOString()
+          });
         }
 
         // Store result for display
@@ -298,9 +416,12 @@ Return ONLY a valid JSON object with this structure:
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (error) {
+        const processingDuration = Date.now() - userStartTime;
         console.error(`Failed to process user ${user.email}:`, error);
 
         // Save error to database
+        let dbSaveSuccessful = false;
+        let dbErrorMessage = null;
         try {
           const dbResult = await saveEvaluationError({
             email: user.email,
@@ -312,11 +433,43 @@ Return ONLY a valid JSON object with this structure:
           
           if (dbResult.error) {
             console.error(`Database error save failed for ${user.email}:`, dbResult.error);
+            dbErrorMessage = dbResult.error;
           } else {
             console.log(`Successfully saved error for ${user.email} to database`);
+            dbSaveSuccessful = true;
           }
         } catch (dbError) {
           console.error(`Database error save failed for ${user.email}:`, dbError);
+          dbErrorMessage = dbError.message;
+        }
+
+        // Log user error
+        if (sessionId) {
+          await logProcessEvent({
+            sessionId,
+            batchId,
+            email: user.email,
+            userIndex: i + 1,
+            globalUserIndex: globalIndex + 1,
+            logLevel: 'ERROR',
+            logType: 'USER_ERROR',
+            message: `Failed to process ${user.email}: ${error.message}`,
+            processingStatus: 'error',
+            totalScore: 0,
+            processingDurationMs: processingDuration,
+            errorMessage: error.message,
+            errorCode: error.code || 'UNKNOWN',
+            stackTrace: error.stack,
+            dbSaveAttempted: true,
+            dbSaveSuccessful,
+            dbErrorMessage,
+            details: {
+              errorType: error.constructor.name,
+              isApiError: error.message.includes('API') || error.message.includes('Gemini'),
+              isNetworkError: error.message.includes('network') || error.message.includes('fetch')
+            },
+            completedAt: new Date().toISOString()
+          });
         }
 
         const userResult = {
@@ -333,7 +486,37 @@ Return ONLY a valid JSON object with this structure:
       }
     }
 
+    const batchDuration = Date.now() - batchStartTime;
     console.log(`Completed Batch ${currentBatchIndex + 1}/${totalBatches}`);
+
+    // Log batch completion
+    if (sessionId) {
+      const successCount = evaluationResults.filter(r => r.status === 'success').length;
+      const skippedCount = evaluationResults.filter(r => r.status === 'skipped').length;
+      const errorCount = evaluationResults.filter(r => r.status === 'error').length;
+
+      await logProcessEvent({
+        sessionId,
+        batchId,
+        batchNumber: currentBatchIndex + 1,
+        totalBatches,
+        logLevel: 'INFO',
+        logType: 'BATCH_COMPLETE',
+        message: `Completed batch ${currentBatchIndex + 1}/${totalBatches} - ${successCount} success, ${skippedCount} skipped, ${errorCount} errors`,
+        totalUsers: currentBatch.length,
+        processingDurationMs: batchDuration,
+        details: {
+          batchResults: {
+            total: currentBatch.length,
+            successful: successCount,
+            skipped: skippedCount,
+            errors: errorCount
+          },
+          avgProcessingTimePerUser: Math.round(batchDuration / currentBatch.length)
+        },
+        completedAt: new Date().toISOString()
+      });
+    }
 
     setIsProcessing(false);
 
@@ -343,12 +526,66 @@ Return ONLY a valid JSON object with this structure:
 
     console.log(`Batch ${currentBatchIndex + 1} completed! Processed ${currentBatch.length} users.`);
 
+    // Log session completion
+    if (sessionId) {
+      const totalSuccessful = evaluationResults.filter(r => r.status === 'success').length;
+      const totalSkipped = evaluationResults.filter(r => r.status === 'skipped').length;
+      const totalErrors = evaluationResults.filter(r => r.status === 'error').length;
+      const avgScore = evaluationResults
+        .filter(r => r.status === 'success' || r.status === 'skipped')
+        .reduce((sum, r) => sum + r.totalScore, 0) / 
+        (totalSuccessful + totalSkipped || 1);
+
+      await logProcessEvent({
+        sessionId,
+        logLevel: 'INFO',
+        logType: 'SESSION_COMPLETE',
+        message: `Session completed - processed ${users.length} users: ${totalSuccessful} successful, ${totalSkipped} skipped, ${totalErrors} errors`,
+        totalSessionUsers: users.length,
+        details: {
+          sessionSummary: {
+            totalUsers: users.length,
+            successful: totalSuccessful,
+            skipped: totalSkipped,
+            errors: totalErrors,
+            averageScore: Math.round(avgScore),
+            totalBatches: Math.ceil(users.length / BATCH_SIZE)
+          },
+          performance: {
+            totalProcessingTime: Date.now() - new Date(evaluationResults[0]?.finishedAt || new Date()).getTime(),
+            avgTimePerUser: 'calculated_by_db_view'
+          }
+        },
+        completedAt: new Date().toISOString()
+      });
+    }
+
     if (onComplete) {
       onComplete();
     }
   };
 
   const startBatchProcessing = async () => {
+    // Generate unique session ID
+    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setSessionId(newSessionId);
+
+    // Log session start
+    await logProcessEvent({
+      sessionId: newSessionId,
+      logLevel: 'INFO',
+      logType: 'SESSION_START',
+      message: `Starting batch evaluation session for ${users.length} users`,
+      totalSessionUsers: users.length,
+      details: {
+        totalUsers: users.length,
+        batchSize: BATCH_SIZE,
+        totalBatches: Math.ceil(users.length / BATCH_SIZE),
+        userEmails: users.map(u => u.email)
+      },
+      startedAt: new Date().toISOString()
+    });
+
     // Reset everything for a fresh start
     setEvaluationResults([]);
     setProcessedUsersCount(0);

@@ -407,6 +407,242 @@ export const fetchEvaluationResults = async (email) => {
 };
 
 /**
+ * Logs process events to the process_logs table
+ * @param {Object} logData - The log data
+ * @param {string} logData.sessionId - Session identifier
+ * @param {string} logData.batchId - Batch identifier (optional)
+ * @param {number} logData.batchNumber - Batch number (optional)
+ * @param {number} logData.totalBatches - Total batches (optional)
+ * @param {string} logData.email - User email (optional)
+ * @param {number} logData.userIndex - User index in batch (optional)
+ * @param {number} logData.totalUsers - Total users in batch (optional)
+ * @param {number} logData.globalUserIndex - Global user index (optional)
+ * @param {number} logData.totalSessionUsers - Total users in session (optional)
+ * @param {string} logData.logLevel - Log level (DEBUG, INFO, WARN, ERROR)
+ * @param {string} logData.logType - Log type (SESSION_START, USER_PROCESSING, etc.)
+ * @param {string} logData.message - Log message
+ * @param {Object} logData.details - Additional structured data (optional)
+ * @param {string} logData.processingStatus - Processing status (optional)
+ * @param {number} logData.totalScore - Total score (optional)
+ * @param {number} logData.processingDurationMs - Processing duration (optional)
+ * @param {number} logData.apiCallsMade - API calls made (optional)
+ * @param {string} logData.errorMessage - Error message (optional)
+ * @param {string} logData.errorCode - Error code (optional)
+ * @param {string} logData.stackTrace - Stack trace (optional)
+ * @param {boolean} logData.dbSaveAttempted - Database save attempted (optional)
+ * @param {boolean} logData.dbSaveSuccessful - Database save successful (optional)
+ * @param {string} logData.dbErrorMessage - Database error message (optional)
+ * @param {string} logData.aiModel - AI model used (optional)
+ * @returns {Object} - Object containing insert result and any errors
+ */
+export const logProcessEvent = async (logData) => {
+  try {
+    const {
+      sessionId,
+      batchId = null,
+      batchNumber = null,
+      totalBatches = null,
+      email = null,
+      userIndex = null,
+      totalUsers = null,
+      globalUserIndex = null,
+      totalSessionUsers = null,
+      logLevel = 'INFO',
+      logType,
+      message,
+      details = null,
+      processingStatus = null,
+      totalScore = null,
+      processingDurationMs = null,
+      apiCallsMade = 0,
+      errorMessage = null,
+      errorCode = null,
+      stackTrace = null,
+      dbSaveAttempted = false,
+      dbSaveSuccessful = false,
+      dbErrorMessage = null,
+      startedAt = null,
+      completedAt = null,
+      aiModel = null,
+      componentName = 'BatchEvaluationProcessor',
+      environment = 'production'
+    } = logData;
+
+    if (!sessionId || !logType || !message) {
+      throw new Error('sessionId, logType, and message are required for logging');
+    }
+
+    const logRecord = {
+      session_id: sessionId,
+      batch_id: batchId,
+      batch_number: batchNumber,
+      total_batches: totalBatches,
+      email: email,
+      user_index: userIndex,
+      total_users: totalUsers,
+      global_user_index: globalUserIndex,
+      total_session_users: totalSessionUsers,
+      log_level: logLevel,
+      log_type: logType,
+      message: message,
+      details: details ? JSON.stringify(details) : null,
+      processing_status: processingStatus,
+      total_score: totalScore,
+      processing_duration_ms: processingDurationMs,
+      api_calls_made: apiCallsMade,
+      error_message: errorMessage,
+      error_code: errorCode,
+      stack_trace: stackTrace,
+      db_save_attempted: dbSaveAttempted,
+      db_save_successful: dbSaveSuccessful,
+      db_error_message: dbErrorMessage,
+      started_at: startedAt,
+      completed_at: completedAt,
+      component_name: componentName,
+      ai_model: aiModel,
+      environment: environment
+    };
+
+    const { data, error } = await supabase
+      .from('process_logs')
+      .insert([logRecord])
+      .select();
+
+    if (error) {
+      console.error('Failed to insert process log:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: data[0], error: null };
+  } catch (err) {
+    console.error('Error logging process event:', err);
+    return { data: null, error: err.message };
+  }
+};
+
+/**
+ * Fetches session summary from process logs
+ * @param {string} sessionId - Session identifier
+ * @returns {Object} - Object containing session summary and any errors
+ */
+export const getSessionSummary = async (sessionId) => {
+  try {
+    if (!sessionId) {
+      throw new Error('sessionId is required');
+    }
+
+    const { data, error } = await supabase
+      .from('session_summary')
+      .select('*')
+      .eq('session_id', sessionId)
+      .single();
+
+    if (error) {
+      console.error('Failed to fetch session summary:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data, error: null };
+  } catch (err) {
+    console.error('Error fetching session summary:', err);
+    return { data: null, error: err.message };
+  }
+};
+
+/**
+ * Fetches batch summaries for a session
+ * @param {string} sessionId - Session identifier
+ * @returns {Object} - Object containing batch summaries and any errors
+ */
+export const getBatchSummaries = async (sessionId) => {
+  try {
+    if (!sessionId) {
+      throw new Error('sessionId is required');
+    }
+
+    const { data, error } = await supabase
+      .from('batch_summary')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('batch_number', { ascending: true });
+
+    if (error) {
+      console.error('Failed to fetch batch summaries:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: data || [], error: null };
+  } catch (err) {
+    console.error('Error fetching batch summaries:', err);
+    return { data: null, error: err.message };
+  }
+};
+
+/**
+ * Fetches process logs with optional filters
+ * @param {Object} filters - Filter options
+ * @param {string} filters.sessionId - Session ID filter
+ * @param {string} filters.batchId - Batch ID filter
+ * @param {string} filters.email - Email filter
+ * @param {string} filters.logLevel - Log level filter
+ * @param {string} filters.logType - Log type filter
+ * @param {string} filters.processingStatus - Processing status filter
+ * @param {number} filters.limit - Limit results
+ * @returns {Object} - Object containing filtered logs and any errors
+ */
+export const getProcessLogs = async (filters = {}) => {
+  try {
+    let query = supabase
+      .from('process_logs')
+      .select('*');
+
+    // Apply filters
+    if (filters.sessionId) {
+      query = query.eq('session_id', filters.sessionId);
+    }
+    
+    if (filters.batchId) {
+      query = query.eq('batch_id', filters.batchId);
+    }
+    
+    if (filters.email) {
+      query = query.eq('email', filters.email);
+    }
+    
+    if (filters.logLevel) {
+      query = query.eq('log_level', filters.logLevel);
+    }
+    
+    if (filters.logType) {
+      query = query.eq('log_type', filters.logType);
+    }
+    
+    if (filters.processingStatus) {
+      query = query.eq('processing_status', filters.processingStatus);
+    }
+
+    // Apply ordering and limit
+    query = query.order('created_at', { ascending: false });
+    
+    if (filters.limit) {
+      query = query.limit(filters.limit);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Failed to fetch process logs:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: data || [], error: null };
+  } catch (err) {
+    console.error('Error fetching process logs:', err);
+    return { data: null, error: err.message };
+  }
+};
+
+/**
  * Checks if an evaluation result already exists for the given email
  * @param {string} email - User's email
  * @returns {Object} - Object containing exists flag and any errors
