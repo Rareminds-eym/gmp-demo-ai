@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AlertTriangle, BarChart, CheckCircle, Clock, Database, XCircle } from 'lucide-react';
 import { hackathonData } from '../data/HackathonData';
-import { checkEvaluationExists, logProcessEvent, saveEvaluationError, saveEvaluationResults, testLogInsertion, debugProcessLogs } from '../lib/databaseService';
+import { checkEvaluationExists, logProcessEvent, saveEvaluationError, saveEvaluationResults, updateEvaluationResults, testLogInsertion, debugProcessLogs, getEmailProcessingSummary, getEmailActivityTimeline, getBatchEmailSummaries, getProcessedEmails } from '../lib/databaseService';
 
 const BatchEvaluationProcessor = ({ users, onComplete }) => {
   const [currentUserIndex, setCurrentUserIndex] = useState(0);
@@ -296,9 +296,10 @@ Return ONLY a valid JSON object with this structure:
             });
           }
           // Continue with processing despite check error
-        } else if (existingCheck.exists) {
+        } else if (existingCheck.exists && existingCheck.isSuccess) {
+          // Skip only if evaluation exists AND status is 'success'
           const processingDuration = Date.now() - userStartTime;
-          console.log(`Skipping ${user.email} - evaluation already exists with score: ${existingCheck.data.total_score}`);
+          console.log(`Skipping ${user.email} - evaluation already exists with success status and score: ${existingCheck.data.total_score}`);
           
           // Log user skip
           if (sessionId) {
@@ -310,15 +311,16 @@ Return ONLY a valid JSON object with this structure:
               globalUserIndex: globalIndex + 1,
               logLevel: 'INFO',
               logType: 'USER_SKIPPED',
-              message: `Skipped ${user.email} - evaluation already exists`,
+              message: `Skipped ${user.email} - evaluation already exists with success status`,
               processingStatus: 'skipped',
               totalScore: existingCheck.data.total_score,
               processingDurationMs: processingDuration,
               dbSaveAttempted: false, // No save attempted since already exists
               dbSaveSuccessful: false, // No save needed
               details: {
-                reason: 'Already evaluated',
+                reason: 'Already evaluated with success status',
                 existingScore: existingCheck.data.total_score,
+                existingStatus: existingCheck.data.evaluation_status,
                 existingProcessedAt: existingCheck.data.processed_at
               },
               completedAt: new Date().toISOString()
@@ -331,7 +333,7 @@ Return ONLY a valid JSON object with this structure:
             totalScore: existingCheck.data.total_score,
             status: 'skipped',
             finishedAt: existingCheck.data.processed_at,
-            skippedReason: 'Already evaluated',
+            skippedReason: 'Already evaluated with success status',
             savedToDatabase: true
           };
 
@@ -344,6 +346,28 @@ Return ONLY a valid JSON object with this structure:
           }
           
           continue; // Skip to next user
+        } else if (existingCheck.exists && existingCheck.needsUpdate) {
+          // Update existing record if status is not 'success'
+          console.log(`Updating existing evaluation for ${user.email} - previous status: ${existingCheck.data.evaluation_status}`);
+          
+          // Log that we're updating
+          if (sessionId) {
+            await logProcessEvent({
+              sessionId,
+              batchId,
+              email: user.email,
+              userIndex: i + 1,
+              globalUserIndex: globalIndex + 1,
+              logLevel: 'INFO',
+              logType: 'USER_UPDATE_START',
+              message: `Updating existing evaluation for ${user.email} - previous status: ${existingCheck.data.evaluation_status}`,
+              details: {
+                previousStatus: existingCheck.data.evaluation_status,
+                previousScore: existingCheck.data.total_score,
+                recordId: existingCheck.data.id
+              }
+            });
+          }
         }
 
         const evaluationResult = await evaluateUser(user);
@@ -352,27 +376,51 @@ Return ONLY a valid JSON object with this structure:
         // Save to LocalStorage immediately after successful evaluation
         saveUserToLocalStorage(user.email, evaluationResult.totalScore);
 
-        // Save to database
+        // Save to database (insert or update based on existing record)
         let dbSaveSuccessful = false;
         let dbErrorMessage = null;
+        let isUpdate = existingCheck.exists && existingCheck.needsUpdate;
+        
         try {
-          const dbResult = await saveEvaluationResults({
-            email: user.email,
-            user_id: user.user_id,
-            case_id: user.case_id || user.selected_case_id,
-            aiResults: evaluationResult,
-            batchId: batchId
-          });
+          let dbResult;
           
-          if (dbResult.error) {
-            console.error(`Database save failed for ${user.email}:`, dbResult.error);
-            dbErrorMessage = dbResult.error;
+          if (isUpdate) {
+            // Update existing record
+            dbResult = await updateEvaluationResults(existingCheck.data.id, {
+              email: user.email,
+              user_id: user.user_id,
+              case_id: user.case_id || user.selected_case_id,
+              aiResults: evaluationResult,
+              batchId: batchId
+            });
+            
+            if (dbResult.error) {
+              console.error(`Database update failed for ${user.email}:`, dbResult.error);
+              dbErrorMessage = dbResult.error;
+            } else {
+              console.log(`Successfully updated ${user.email} evaluation in database`);
+              dbSaveSuccessful = true;
+            }
           } else {
-            console.log(`Successfully saved ${user.email} evaluation to database`);
-            dbSaveSuccessful = true;
+            // Insert new record
+            dbResult = await saveEvaluationResults({
+              email: user.email,
+              user_id: user.user_id,
+              case_id: user.case_id || user.selected_case_id,
+              aiResults: evaluationResult,
+              batchId: batchId
+            });
+            
+            if (dbResult.error) {
+              console.error(`Database save failed for ${user.email}:`, dbResult.error);
+              dbErrorMessage = dbResult.error;
+            } else {
+              console.log(`Successfully saved ${user.email} evaluation to database`);
+              dbSaveSuccessful = true;
+            }
           }
         } catch (dbError) {
-          console.error(`Database save error for ${user.email}:`, dbError);
+          console.error(`Database ${isUpdate ? 'update' : 'save'} error for ${user.email}:`, dbError);
           dbErrorMessage = dbError.message;
         }
 
@@ -385,8 +433,8 @@ Return ONLY a valid JSON object with this structure:
             userIndex: i + 1,
             globalUserIndex: globalIndex + 1,
             logLevel: 'INFO',
-            logType: 'USER_SUCCESS',
-            message: `Successfully processed ${user.email} with score ${evaluationResult.totalScore}`,
+            logType: isUpdate ? 'USER_UPDATED' : 'USER_SUCCESS',
+            message: `Successfully ${isUpdate ? 'updated' : 'processed'} ${user.email} with score ${evaluationResult.totalScore}`,
             processingStatus: 'success',
             totalScore: evaluationResult.totalScore,
             processingDurationMs: processingDuration,
@@ -397,7 +445,9 @@ Return ONLY a valid JSON object with this structure:
             details: {
               stageScores: evaluationResult.stageScores,
               overallFeedback: evaluationResult.overallFeedback?.substring(0, 200) + '...', // Truncate for logging
-              recommendationsCount: evaluationResult.recommendations?.length || 0
+              recommendationsCount: evaluationResult.recommendations?.length || 0,
+              isUpdate: isUpdate,
+              recordId: isUpdate ? existingCheck.data.id : null
             },
             aiModel: 'gemini-2.0-flash-exp',
             completedAt: new Date().toISOString()
@@ -408,16 +458,17 @@ Return ONLY a valid JSON object with this structure:
         const userResult = {
           email: user.email,
           totalScore: evaluationResult.totalScore,
-          status: 'success',
+          status: isUpdate ? 'updated' : 'success',
           finishedAt: new Date().toISOString(),
           fullResults: evaluationResult,
-          savedToDatabase: true // Flag to indicate database save attempt
+          savedToDatabase: true, // Flag to indicate database save attempt
+          wasUpdate: isUpdate
         };
 
         setEvaluationResults(prev => [...prev, userResult]);
         setProcessedUsersCount(prev => prev + 1);
 
-        console.log(`Successfully processed ${user.email} with score ${evaluationResult.totalScore}`);
+        console.log(`Successfully ${isUpdate ? 'updated' : 'processed'} ${user.email} with score ${evaluationResult.totalScore}`);
 
         // Small delay between users to prevent rate limiting
         if (i < currentBatch.length - 1) {
@@ -500,8 +551,12 @@ Return ONLY a valid JSON object with this structure:
     // Log batch completion
     if (sessionId) {
       const successCount = evaluationResults.filter(r => r.status === 'success').length;
+      const updatedCount = evaluationResults.filter(r => r.status === 'updated').length;
       const skippedCount = evaluationResults.filter(r => r.status === 'skipped').length;
       const errorCount = evaluationResults.filter(r => r.status === 'error').length;
+      
+      // Get emails from current batch for logging
+      const batchEmails = currentBatch.map(u => u.email).join(', ');
 
       await logProcessEvent({
         sessionId,
@@ -510,16 +565,18 @@ Return ONLY a valid JSON object with this structure:
         totalBatches,
         logLevel: 'INFO',
         logType: 'BATCH_COMPLETE',
-        message: `Completed batch ${currentBatchIndex + 1}/${totalBatches} - ${successCount} success, ${skippedCount} skipped, ${errorCount} errors`,
+        message: `Completed batch ${currentBatchIndex + 1}/${totalBatches} - ${successCount} new, ${updatedCount} updated, ${skippedCount} skipped, ${errorCount} errors`,
         totalUsers: currentBatch.length,
         processingDurationMs: batchDuration,
         details: {
           batchResults: {
             total: currentBatch.length,
             successful: successCount,
+            updated: updatedCount,
             skipped: skippedCount,
             errors: errorCount
           },
+          batchEmails: batchEmails,
           avgProcessingTimePerUser: Math.round(batchDuration / currentBatch.length)
         },
         completedAt: new Date().toISOString()
@@ -537,28 +594,34 @@ Return ONLY a valid JSON object with this structure:
     // Log session completion
     if (sessionId) {
       const totalSuccessful = evaluationResults.filter(r => r.status === 'success').length;
+      const totalUpdated = evaluationResults.filter(r => r.status === 'updated').length;
       const totalSkipped = evaluationResults.filter(r => r.status === 'skipped').length;
       const totalErrors = evaluationResults.filter(r => r.status === 'error').length;
       const avgScore = evaluationResults
-        .filter(r => r.status === 'success' || r.status === 'skipped')
+        .filter(r => r.status === 'success' || r.status === 'updated' || r.status === 'skipped')
         .reduce((sum, r) => sum + r.totalScore, 0) / 
-        (totalSuccessful + totalSkipped || 1);
+        (totalSuccessful + totalUpdated + totalSkipped || 1);
+      
+      // Get all processed emails for logging
+      const allProcessedEmails = evaluationResults.map(r => r.email).join(', ');
 
       await logProcessEvent({
         sessionId,
         logLevel: 'INFO',
         logType: 'SESSION_COMPLETE',
-        message: `Session completed - processed ${users.length} users: ${totalSuccessful} successful, ${totalSkipped} skipped, ${totalErrors} errors`,
+        message: `Session completed - processed ${users.length} users: ${totalSuccessful} new, ${totalUpdated} updated, ${totalSkipped} skipped, ${totalErrors} errors`,
         totalSessionUsers: users.length,
         details: {
           sessionSummary: {
             totalUsers: users.length,
             successful: totalSuccessful,
+            updated: totalUpdated,
             skipped: totalSkipped,
             errors: totalErrors,
             averageScore: Math.round(avgScore),
             totalBatches: Math.ceil(users.length / BATCH_SIZE)
           },
+          processedEmails: allProcessedEmails,
           performance: {
             totalProcessingTime: Date.now() - new Date(evaluationResults[0]?.finishedAt || new Date()).getTime(),
             avgTimePerUser: 'calculated_by_db_view'
@@ -618,6 +681,8 @@ Return ONLY a valid JSON object with this structure:
     switch (status) {
       case 'success':
         return <CheckCircle className="h-5 w-5 text-green-600" />;
+      case 'updated':
+        return <CheckCircle className="h-5 w-5 text-blue-600" />;
       case 'skipped':
         return <AlertTriangle className="h-5 w-5 text-yellow-600" />;
       case 'error':
@@ -686,14 +751,38 @@ Return ONLY a valid JSON object with this structure:
               </button>
               <button
                 onClick={async () => {
-                  console.log('Testing database logging...');
+                  console.log('Testing database logging and email queries...');
+                  
+                  // Test basic logging
                   const testResult = await testLogInsertion();
                   const debugResult = await debugProcessLogs();
-                  alert(`Test: ${testResult.success ? 'Success' : 'Failed: ' + testResult.error}`);
+                  
+                  // Test email-focused queries
+                  console.log('Testing email processing summary...');
+                  const emailSummary = await getEmailProcessingSummary();
+                  console.log('Email processing summary:', emailSummary);
+                  
+                  console.log('Testing batch email summaries...');
+                  const batchEmailSummary = await getBatchEmailSummaries();
+                  console.log('Batch email summaries:', batchEmailSummary);
+                  
+                  console.log('Testing processed emails...');
+                  const processedEmails = await getProcessedEmails({ limit: 10 });
+                  console.log('Recent processed emails:', processedEmails);
+                  
+                  // Test specific email timeline if we have emails
+                  if (processedEmails.data && processedEmails.data.length > 0) {
+                    const testEmail = processedEmails.data[0].email;
+                    console.log(`Testing activity timeline for ${testEmail}...`);
+                    const timeline = await getEmailActivityTimeline(testEmail);
+                    console.log('Email timeline:', timeline);
+                  }
+                  
+                  alert(`Test: ${testResult.success ? 'Success' : 'Failed: ' + testResult.error}\nCheck console for detailed email query results`);
                 }}
                 className="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors text-sm"
               >
-                Test Logging
+                Test Logging & Email Queries
               </button>
             </div>
           )}
@@ -747,6 +836,8 @@ Return ONLY a valid JSON object with this structure:
               className={`flex items-center justify-between p-4 rounded-lg border-2 ${
                 result.status === 'success'
                   ? 'bg-green-50 border-green-200'
+                  : result.status === 'updated'
+                  ? 'bg-blue-50 border-blue-200'
                   : result.status === 'skipped'
                   ? 'bg-yellow-50 border-yellow-200'
                   : 'bg-red-50 border-red-200'
@@ -771,6 +862,10 @@ Return ONLY a valid JSON object with this structure:
                   <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
                     Score: {result.totalScore}/100
                   </div>
+                ) : result.status === 'updated' ? (
+                  <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+                    Updated: {result.totalScore}/100
+                  </div>
                 ) : result.status === 'skipped' ? (
                   <div className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium">
                     Skipped (Score: {result.totalScore}/100)
@@ -793,7 +888,8 @@ Return ONLY a valid JSON object with this structure:
             <CheckCircle className="mx-auto h-12 w-12 mb-3" />
             <h3 className="text-2xl font-bold mb-2">Batch Processing Complete!</h3>
             <p className="text-lg mb-4">
-              Successfully processed {evaluationResults.filter(r => r.status === 'success').length} users,{' '}
+              Successfully processed {evaluationResults.filter(r => r.status === 'success').length} new users,{' '}
+              updated {evaluationResults.filter(r => r.status === 'updated').length} existing users,{' '}
               skipped {evaluationResults.filter(r => r.status === 'skipped').length} already evaluated users{' '}
               out of {users.length} total users
             </p>
@@ -808,10 +904,10 @@ Return ONLY a valid JSON object with this structure:
               </div>
               <div className="text-sm space-y-1">
                 {evaluationResults
-                  .filter(r => r.status === 'success' || r.status === 'skipped')
+                  .filter(r => r.status === 'success' || r.status === 'updated' || r.status === 'skipped')
                   .map((result, index) => (
                     <div key={index} className="flex justify-between">
-                      <span>{result.email} {result.status === 'skipped' ? '(skipped)' : ''}</span>
+                      <span>{result.email} {result.status === 'skipped' ? '(skipped)' : result.status === 'updated' ? '(updated)' : ''}</span>
                       <span>Score: {result.totalScore}</span>
                     </div>
                   ))

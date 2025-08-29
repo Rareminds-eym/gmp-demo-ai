@@ -132,3 +132,82 @@ GROUP BY session_id, batch_id, batch_number;
 -- Grant permissions to views
 GRANT SELECT ON session_summary TO authenticated;
 GRANT SELECT ON batch_summary TO authenticated;
+
+-- Create email-focused view for tracking user processing
+CREATE OR REPLACE VIEW email_processing_summary AS
+SELECT 
+    email,
+    COUNT(*) as total_log_entries,
+    COUNT(CASE WHEN log_type LIKE 'USER_%' THEN 1 END) as user_specific_logs,
+    MAX(CASE WHEN processing_status = 'success' THEN total_score END) as final_score,
+    MAX(CASE WHEN processing_status IS NOT NULL THEN processing_status END) as final_status,
+    MIN(created_at) as first_log_time,
+    MAX(created_at) as last_log_time,
+    SUM(processing_duration_ms) as total_processing_time_ms,
+    SUM(api_calls_made) as total_api_calls,
+    COUNT(CASE WHEN log_level = 'ERROR' THEN 1 END) as error_count,
+    COUNT(CASE WHEN log_level = 'WARN' THEN 1 END) as warning_count,
+    -- Extract session info
+    STRING_AGG(DISTINCT session_id, ', ') as session_ids,
+    STRING_AGG(DISTINCT batch_id, ', ') as batch_ids
+FROM process_logs 
+WHERE email IS NOT NULL
+GROUP BY email
+ORDER BY last_log_time DESC;
+
+-- Create view for email activity timeline
+CREATE OR REPLACE VIEW email_activity_timeline AS
+SELECT 
+    email,
+    log_type,
+    processing_status,
+    total_score,
+    processing_duration_ms,
+    message,
+    session_id,
+    batch_id,
+    created_at,
+    CASE 
+        WHEN log_type = 'USER_PROCESSING_START' THEN 1
+        WHEN log_type = 'USER_SKIPPED' THEN 2 
+        WHEN log_type = 'USER_SUCCESS' THEN 3
+        WHEN log_type = 'USER_ERROR' THEN 4
+        ELSE 5
+    END as log_sequence_order
+FROM process_logs 
+WHERE email IS NOT NULL
+ORDER BY email, created_at;
+
+-- Create view for batch email summaries
+CREATE OR REPLACE VIEW batch_email_summary AS
+SELECT 
+    batch_id,
+    session_id,
+    batch_number,
+    COUNT(DISTINCT email) as unique_emails_processed,
+    STRING_AGG(DISTINCT email, ', ' ORDER BY email) as email_list,
+    COUNT(CASE WHEN processing_status = 'success' THEN 1 END) as successful_emails,
+    COUNT(CASE WHEN processing_status = 'error' THEN 1 END) as failed_emails,
+    COUNT(CASE WHEN processing_status = 'skipped' THEN 1 END) as skipped_emails,
+    AVG(CASE WHEN processing_status = 'success' THEN total_score END) as avg_success_score,
+    MIN(created_at) as batch_start_time,
+    MAX(created_at) as batch_end_time
+FROM process_logs 
+WHERE batch_id IS NOT NULL AND email IS NOT NULL
+GROUP BY batch_id, session_id, batch_number
+ORDER BY session_id, batch_number;
+
+-- Grant permissions to new email-focused views
+GRANT SELECT ON email_processing_summary TO authenticated;
+GRANT SELECT ON email_activity_timeline TO authenticated;
+GRANT SELECT ON batch_email_summary TO authenticated;
+
+-- Add additional email-focused indexes for better query performance
+CREATE INDEX idx_process_logs_email_status ON process_logs (email, processing_status);
+CREATE INDEX idx_process_logs_email_created ON process_logs (email, created_at);
+CREATE INDEX idx_process_logs_email_log_type ON process_logs (email, log_type);
+
+-- Add comments for new views
+COMMENT ON VIEW email_processing_summary IS 'Summary of processing activity per email address';
+COMMENT ON VIEW email_activity_timeline IS 'Chronological timeline of all activities per email';
+COMMENT ON VIEW batch_email_summary IS 'Email processing summary grouped by batch';

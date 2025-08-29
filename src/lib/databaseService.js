@@ -378,6 +378,98 @@ export const saveEvaluationError = async (errorData) => {
 };
 
 /**
+ * Updates an existing evaluation result in the database
+ * @param {number} recordId - ID of the existing record to update
+ * @param {Object} evaluationData - The evaluation data
+ * @param {string} evaluationData.email - User's email
+ * @param {string} evaluationData.user_id - User's ID (optional)
+ * @param {number} evaluationData.case_id - Case study ID (optional)
+ * @param {Object} evaluationData.aiResults - AI evaluation results object
+ * @param {string} evaluationData.batchId - Batch processing ID (optional)
+ * @returns {Object} - Object containing update result and any errors
+ */
+export const updateEvaluationResults = async (recordId, evaluationData) => {
+  try {
+    const { email, user_id, case_id, aiResults, batchId } = evaluationData;
+    
+    if (!recordId || !email || !aiResults) {
+      throw new Error('Record ID, email and AI results are required');
+    }
+
+    // Extract stage scores from AI results
+    const stageScores = aiResults.stageScores || {};
+    
+    const evaluationRecord = {
+      email: email.trim(),
+      user_id: user_id || null,
+      case_id: case_id || null,
+      total_score: aiResults.totalScore || 0,
+      
+      // Individual stage scores and feedback
+      idea_score: stageScores.idea?.score || null,
+      idea_status: stageScores.idea?.status || null,
+      idea_feedback: stageScores.idea?.feedback || null,
+      
+      problem_score: stageScores.problem?.score || null,
+      problem_status: stageScores.problem?.status || null,
+      problem_feedback: stageScores.problem?.feedback || null,
+      
+      technology_score: stageScores.technology?.score || null,
+      technology_status: stageScores.technology?.status || null,
+      technology_feedback: stageScores.technology?.feedback || null,
+      
+      collaboration_score: stageScores.collaboration?.score || null,
+      collaboration_status: stageScores.collaboration?.status || null,
+      collaboration_feedback: stageScores.collaboration?.feedback || null,
+      
+      creativity_score: stageScores.creativity?.score || null,
+      creativity_status: stageScores.creativity?.status || null,
+      creativity_feedback: stageScores.creativity?.feedback || null,
+      
+      scale_score: stageScores.scale?.score || null,
+      scale_status: stageScores.scale?.status || null,
+      scale_feedback: stageScores.scale?.feedback || null,
+      
+      impact_score: stageScores.impact?.score || null,
+      impact_status: stageScores.impact?.status || null,
+      impact_feedback: stageScores.impact?.feedback || null,
+      
+      pitch_score: stageScores.pitch?.score || null,
+      pitch_status: stageScores.pitch?.status || null,
+      pitch_feedback: stageScores.pitch?.feedback || null,
+      
+      // Overall feedback and recommendations
+      overall_feedback: aiResults.overallFeedback || null,
+      recommendations: aiResults.recommendations ? JSON.stringify(aiResults.recommendations) : null,
+      
+      // Processing metadata - update these fields
+      evaluation_status: 'success',
+      error_message: null, // Clear any previous error message
+      processing_batch_id: batchId || null,
+      ai_model: 'gemini-2.0-flash-exp',
+      processed_at: new Date().toISOString() // Update the processed timestamp
+    };
+
+    const { data, error } = await supabase
+      .from('evaluation_results')
+      .update(evaluationRecord)
+      .eq('id', recordId)
+      .select();
+
+    if (error) {
+      console.error('Failed to update evaluation results:', error);
+      return { data: null, error: error.message };
+    }
+
+    console.log(`Successfully updated evaluation results for ${email}`);
+    return { data: data[0], error: null };
+  } catch (err) {
+    console.error('Error updating evaluation results:', err);
+    return { data: null, error: err.message };
+  }
+};
+
+/**
  * Fetches evaluation results by email
  * @param {string} email - User's email
  * @returns {Object} - Object containing evaluation results and any errors
@@ -583,8 +675,8 @@ export const logProcessEvent = async (logData) => {
     console.log('Inserting log record:', {
       session_id: logRecord.session_id,
       log_type: logRecord.log_type,
+      email: logRecord.email || 'N/A',
       message: logRecord.message,
-      email: logRecord.email,
       batch_id: logRecord.batch_id,
       processing_status: logRecord.processing_status,
       db_save_attempted: logRecord.db_save_attempted,
@@ -734,6 +826,145 @@ export const getProcessLogs = async (filters = {}) => {
 };
 
 /**
+ * Fetches email processing summary from process logs
+ * @param {string} email - Optional email filter
+ * @returns {Object} - Object containing email processing summaries and any errors
+ */
+export const getEmailProcessingSummary = async (email = null) => {
+  try {
+    let query = supabase
+      .from('email_processing_summary')
+      .select('*');
+
+    if (email) {
+      query = query.eq('email', email);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Failed to fetch email processing summary:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: data || [], error: null };
+  } catch (err) {
+    console.error('Error fetching email processing summary:', err);
+    return { data: null, error: err.message };
+  }
+};
+
+/**
+ * Fetches email activity timeline from process logs
+ * @param {string} email - Email to get timeline for
+ * @returns {Object} - Object containing email activity timeline and any errors
+ */
+export const getEmailActivityTimeline = async (email) => {
+  try {
+    if (!email) {
+      throw new Error('Email is required');
+    }
+
+    const { data, error } = await supabase
+      .from('email_activity_timeline')
+      .select('*')
+      .eq('email', email)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Failed to fetch email activity timeline:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: data || [], error: null };
+  } catch (err) {
+    console.error('Error fetching email activity timeline:', err);
+    return { data: null, error: err.message };
+  }
+};
+
+/**
+ * Fetches batch email summaries from process logs
+ * @param {string} sessionId - Optional session ID filter
+ * @returns {Object} - Object containing batch email summaries and any errors
+ */
+export const getBatchEmailSummaries = async (sessionId = null) => {
+  try {
+    let query = supabase
+      .from('batch_email_summary')
+      .select('*')
+      .order('session_id', { ascending: true })
+      .order('batch_number', { ascending: true });
+
+    if (sessionId) {
+      query = query.eq('session_id', sessionId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Failed to fetch batch email summaries:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: data || [], error: null };
+  } catch (err) {
+    console.error('Error fetching batch email summaries:', err);
+    return { data: null, error: err.message };
+  }
+};
+
+/**
+ * Fetches all emails that have been processed in the system
+ * @param {Object} filters - Filter options
+ * @param {string} filters.processingStatus - Filter by processing status
+ * @param {number} filters.minScore - Minimum score filter
+ * @param {number} filters.maxScore - Maximum score filter
+ * @param {number} filters.limit - Limit results
+ * @returns {Object} - Object containing processed emails and any errors
+ */
+export const getProcessedEmails = async (filters = {}) => {
+  try {
+    let query = supabase
+      .from('process_logs')
+      .select('email, processing_status, total_score, created_at, session_id, batch_id')
+      .not('email', 'is', null);
+
+    // Apply filters
+    if (filters.processingStatus) {
+      query = query.eq('processing_status', filters.processingStatus);
+    }
+    
+    if (filters.minScore) {
+      query = query.gte('total_score', filters.minScore);
+    }
+    
+    if (filters.maxScore) {
+      query = query.lte('total_score', filters.maxScore);
+    }
+
+    // Apply ordering and limit
+    query = query.order('created_at', { ascending: false });
+    
+    if (filters.limit) {
+      query = query.limit(filters.limit);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Failed to fetch processed emails:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: data || [], error: null };
+  } catch (err) {
+    console.error('Error fetching processed emails:', err);
+    return { data: null, error: err.message };
+  }
+};
+
+/**
  * Checks if an evaluation result already exists for the given email
  * @param {string} email - User's email
  * @returns {Object} - Object containing exists flag and any errors
@@ -746,8 +977,9 @@ export const checkEvaluationExists = async (email) => {
 
     const { data, error } = await supabase
       .from('evaluation_results')
-      .select('email, processed_at, total_score')
+      .select('email, processed_at, total_score, evaluation_status, error_message, id')
       .eq('email', email.trim())
+      .order('processed_at', { ascending: false })
       .limit(1);
 
     if (error) {
@@ -756,10 +988,15 @@ export const checkEvaluationExists = async (email) => {
     }
 
     const exists = data && data.length > 0;
+    const record = exists ? data[0] : null;
+    const isSuccess = record && record.evaluation_status === 'success';
+    
     return { 
       exists, 
-      data: exists ? data[0] : null, 
-      error: null 
+      data: record, 
+      error: null,
+      isSuccess,
+      needsUpdate: exists && !isSuccess
     };
   } catch (err) {
     console.error('Error checking evaluation existence:', err);
