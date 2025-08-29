@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS process_logs (
     
     -- Processing results (for user-level logs)
     processing_status VARCHAR(20), -- success, error, skipped
-    total_score INTEGER CHECK (total_score >= 0 AND total_score <= 100),
+    total_score INTEGER CHECK (total_score >= 0 AND total_score <= 70),
     processing_duration_ms INTEGER, -- Time taken to process this user in milliseconds
     api_calls_made INTEGER DEFAULT 0, -- Number of API calls made for this user
     

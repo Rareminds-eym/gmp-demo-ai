@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS evaluation_results (
     email VARCHAR(255) NOT NULL,
     user_id UUID,
     case_id INTEGER,
-    total_score INTEGER NOT NULL CHECK (total_score >= 0 AND total_score <= 100),
+    total_score INTEGER NOT NULL CHECK (total_score >= 0 AND total_score <= 70),
     
     -- Individual stage scores
     idea_score INTEGER CHECK (idea_score >= 0 AND idea_score <= 15),

@@ -85,86 +85,124 @@ const BatchEvaluationProcessor = ({ users, onComplete }) => {
 
       // Build the evaluation prompt
       const prompt = `
-You are evaluating hackathon innovation responses based on a specific case study scenario.
+You are an evaluator for a pharmaceutical innovation hackathon using LAZY EVALUATION principles.
 
-**IMPORTANT EVALUATION RULES:**
-- The CASE STUDY below is the PRIMARY context that all participant responses should address
-- All subsequent questions (Stages 1-10) are SUBQUESTIONS that should relate to and build upon the case study scenario
-- Evaluate how well each response connects to and addresses the specific case study context
-- Score higher for responses that demonstrate understanding of the case study and provide relevant, contextual solutions
+**LAZY EVALUATION GUIDELINES:**
+- IGNORE spelling and grammar mistakes completely
+- Focus on IDEAS and INTENT rather than perfect writing
+- Give benefit of the doubt when meaning is unclear but effort is shown
+- Be generous with partial credit for incomplete but meaningful responses
+- Value creativity and innovation over technical writing skills
+- If a response shows understanding but is poorly written, still give credit
 
-**CASE STUDY (PRIMARY EVALUATION CONTEXT):**
+Students submit answers using the Innovation Template, with sections listed below.
+Each section has:
+Criteria (what to check for - focusing on content, not writing quality).
+Weight (maximum marks).
+Three benchmark levels:
+Exemplar (Best) → full marks.
+Average → half marks.
+Weak (Poor) → zero marks.
+Your task is to:
+Compare the student's response in each section with these benchmarks (ignoring spelling/grammar).
+Assign a score (0, half, or full weight) based on IDEAS and EFFORT.
+Provide a short justification focusing on content quality.
+At the end, total the score out of 70.
+
+**CASE STUDY CONTEXT:**
 ${caseData?.caseFile || 'No case study provided'}
 
-**PARTICIPANT'S RESPONSES TO SUBQUESTIONS:**
+**PARTICIPANT'S RESPONSES:**
 
-**Stage 1 - YOUR INNOVATION IDEA:**
-Question: "I want to solve '___' for '___' by '___'"
-Answer: ${user.idea_statement || 'No response provided'}
+**One-line Idea (Weight: 10)**
+Criteria: Clarity of INTENT + Completeness of CONCEPT (ignore spelling/grammar).
+Exemplar: Clear problem identification + target audience + solution method, even if poorly written.
+Average: Shows understanding of problem and solution direction, regardless of writing quality.
+Weak: Minimal effort or completely unclear intent (not due to spelling errors).
+Student Answer: ${user.idea_statement || 'No response provided'}
 
-**Stage 2 - Problem Analysis:**
-Question: "${getPromptById(2)?.description || 'What issue or need are you addressing? Who faces this problem?'}"
-Answer: ${user.stage2_problem || 'No response provided'}
+**Problem (Weight: 10)**
+Criteria: Understanding of problem and stakeholder impact (content focus, not writing).
+Exemplar: Demonstrates clear grasp of the issue and its consequences, even with poor grammar.
+Average: Shows basic problem awareness but may miss some details, writing quality irrelevant.
+Weak: Very limited understanding shown (not due to language barriers).
+Student Answer: ${user.stage2_problem || 'No response provided'}
 
-**Stage 3 - Technology:**
-Question: "${getPromptById(3)?.description || 'What tool, app, software, machine, or digital aid can make your solution stronger?'}"
-Answer: ${user.stage3_technology || 'No response provided'}
+**Technology (Weight: 10)**
+Criteria: Practical technology ideas (focus on concepts, not technical writing).
+Exemplar: Proposes concrete technological solutions that make sense, regardless of spelling.
+Average: Mentions relevant technology with basic understanding, writing quality ignored.
+Weak: Vague tech references with no clear connection to problem.
+Student Answer: ${user.stage3_technology || 'No response provided'}
 
-**Stage 4 - Collaboration:**
-Question: "${getPromptById(4)?.description || 'Who can you team up with to make this idea bigger?'}"
-Answer: ${user.stage4_collaboration || 'No response provided'}
+**Collaboration (Weight: 10)**
+Criteria: Understanding of teamwork needs (content over presentation).
+Exemplar: Identifies relevant partners and their contributions, even if poorly expressed.
+Average: Shows awareness of collaboration needs, writing style irrelevant.
+Weak: No clear collaboration concept (not due to language issues).
+Student Answer: ${user.stage4_collaboration || 'No response provided'}
 
-**Stage 5 - Creativity:**
-Question: "${getPromptById(5)?.description || 'What unique feature, design, or new approach makes your idea stand out?'}"
-Answer: ${user.stage5_creativity || 'No response provided'}
+**Creativity Twist (Weight: 15)**
+Criteria: Novel thinking and innovation (ideas matter, not eloquence).
+Exemplar: Creative features or approaches that show original thinking, regardless of grammar.
+Average: Some creative elements present, focus on innovation not presentation.
+Weak: Standard/conventional thinking with no creative spark.
+Student Answer: ${user.stage5_creativity || 'No response provided'}
 
-**Stage 6 - Speed & Scale:**
-Question: "${getPromptById(6)?.description || 'How can your solution be applied quickly and scaled?'}"
-Answer: ${user.stage6_speed_scale || 'No response provided'}
+**Speed & Scale (Weight: 15)**
+Criteria: Implementation and growth thinking (practical concepts, not perfect writing).
+Exemplar: Clear implementation strategy and scaling vision, even if grammar is poor.
+Average: Basic implementation awareness, writing quality not considered.
+Weak: No clear implementation concept.
+Student Answer: ${user.stage6_speed_scale || 'No response provided'}
 
-**Stage 7 - Impact:**
-Question: "${getPromptById(7)?.description || 'How does your idea create value?'}"
-Answer: ${user.stage7_impact || 'No response provided'}
+**Purpose & Impact (Weight: 20)**
+Criteria: Understanding of value and benefits (substance over style).
+Exemplar: Connects to patient safety, compliance, economic benefits - content clarity matters, not grammar.
+Average: Shows awareness of positive impact, language quality irrelevant.
+Weak: Minimal impact understanding shown.
+Student Answer: ${user.stage7_impact || 'No response provided'}
 
-**Stage 8 - Final Pitch:**
-Question: "${getPromptById(8)?.description || 'Our innovation solves ___ by using ___, built with ___, adding ___. It can grow with ___ and will create ___.'}'"
-Final Problem: ${user.stage8_final_problem || 'No response provided'}
-Final Technology: ${user.stage8_final_technology || 'No response provided'}
-Final Collaboration: ${user.stage8_final_collaboration || 'No response provided'}
-Final Creativity: ${user.stage8_final_creativity || 'No response provided'}
-Final Speed & Scale: ${user.stage8_final_speed_scale || 'No response provided'}
-Final Impact: ${user.stage8_final_impact || 'No response provided'}
+**Final + Reflection (Weight: 10)**
+Criteria: Consistency and learning awareness (thoughtfulness, not technical writing).
+Exemplar: Shows coherent thinking and genuine reflection, even with spelling errors.
+Average: Basic consistency and simple learning shown, presentation style ignored.
+Weak: No clear synthesis or learning demonstrated.
+Final Pitch: ${user.stage8_final_problem || 'No response provided'} / ${user.stage8_final_technology || 'No response provided'} / ${user.stage8_final_collaboration || 'No response provided'} / ${user.stage8_final_creativity || 'No response provided'} / ${user.stage8_final_speed_scale || 'No response provided'} / ${user.stage8_final_impact || 'No response provided'}
+Reflection: ${user.stage10_reflection || 'No response provided'}
 
-**Stage 10 - Reflection:**
-Question: "${getPromptById(10)?.description || 'What did you learn, what would you improve?'}"
-Answer: ${user.stage10_reflection || 'No response provided'}
+**EVALUATION FOCUS:**
+- CONTENT and IDEAS are what matter
+- IGNORE all spelling, grammar, and language errors
+- REWARD effort and understanding over perfect presentation
+- Be GENEROUS with partial credit
+- Look for the INTENT behind poorly written responses
 
-**EVALUATION CRITERIA:**
-Please evaluate based on:
-1. **CASE STUDY RELEVANCE** - How well do the responses address the specific case study scenario? (HIGHEST PRIORITY)
-2. **CONTEXTUAL UNDERSTANDING** - Does the participant demonstrate understanding of the case study context and constraints?
-3. Completeness and depth of responses
-4. Innovation and creativity within the case study context
-5. Feasibility and practicality of solutions for the case study scenario
-6. Potential impact and scalability relevant to the case study
-7. Coherence between stages and consistency with the case study
-8. Quality of reflection and learning from the case study experience
+**Output Format Required:**
+For each section:
+Section Name
+Score: (0 / half weight / full weight)
+Justification (focus on content quality, mention ignoring language issues)
+
+At the end:
+Total Score (out of 70)
+Overall Feedback (2–3 sentences on content strengths and idea development, ignore writing quality).
 
 Return ONLY a valid JSON object with this structure:
 {
-  "totalScore": <integer 0-100>,
+  "totalScore": <integer 0-70>,
   "stageScores": {
-    "idea": {"score": <integer 0-15>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"},
-    "problem": {"score": <integer 0-15>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"},
-    "technology": {"score": <integer 0-10>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"},
-    "collaboration": {"score": <integer 0-10>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"},
-    "creativity": {"score": <integer 0-15>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"},
-    "scale": {"score": <integer 0-10>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"},
-    "impact": {"score": <integer 0-15>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"},
-    "pitch": {"score": <integer 0-10>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"}
+    "idea": {"score": <integer 0-10>, "status": "exemplar|average|weak", "feedback": "justification focusing on ideas not writing"},
+    "problem": {"score": <integer 0-10>, "status": "exemplar|average|weak", "feedback": "justification focusing on understanding not grammar"},
+    "technology": {"score": <integer 0-10>, "status": "exemplar|average|weak", "feedback": "justification focusing on tech concepts not spelling"},
+    "collaboration": {"score": <integer 0-10>, "status": "exemplar|average|weak", "feedback": "justification focusing on teamwork ideas not presentation"},
+    "creativity": {"score": <integer 0-15>, "status": "exemplar|average|weak", "feedback": "justification focusing on innovation not eloquence"},
+    "scale": {"score": <integer 0-15>, "status": "exemplar|average|weak", "feedback": "justification focusing on implementation concepts not writing quality"},
+    "impact": {"score": <integer 0-20>, "status": "exemplar|average|weak", "feedback": "justification focusing on value understanding not language"},
+    "pitch": {"score": <integer 0-10>, "status": "exemplar|average|weak", "feedback": "justification focusing on consistency and learning not writing skills"}
   },
-  "overallFeedback": "comprehensive feedback with strengths, areas for improvement, and suggestions",
-  "recommendations": ["specific actionable recommendation 1", "recommendation 2", "recommendation 3"]
+  "overallFeedback": "comprehensive feedback focusing on ideas, innovation, and understanding while completely ignoring spelling/grammar issues",
+  "recommendations": ["actionable recommendation focusing on idea development 1", "content-focused recommendation 2", "innovation-focused recommendation 3"]
 }`;
 
       const result = await model.generateContent({
@@ -860,15 +898,15 @@ Return ONLY a valid JSON object with this structure:
               <div className="text-right">
                 {result.status === 'success' ? (
                   <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
-                    Score: {result.totalScore}/100
+                    Score: {result.totalScore}/70
                   </div>
                 ) : result.status === 'updated' ? (
                   <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
-                    Updated: {result.totalScore}/100
+                    Updated: {result.totalScore}/70
                   </div>
                 ) : result.status === 'skipped' ? (
                   <div className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium">
-                    Skipped (Score: {result.totalScore}/100)
+                    Skipped (Score: {result.totalScore}/70)
                   </div>
                 ) : (
                   <div className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-medium">
