@@ -118,16 +118,6 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
   };
 
   const getCompletedUserIds = () => {
-    const savedUsers = localStorage.getItem('completed_users');
-    if (savedUsers) {
-      try {
-        const completedUsers = JSON.parse(savedUsers);
-        return completedUsers.map(user => user.email);
-      } catch (error) {
-        console.error('Error loading completed users from LocalStorage:', error);
-        return [];
-      }
-    }
     return [];
   };
 

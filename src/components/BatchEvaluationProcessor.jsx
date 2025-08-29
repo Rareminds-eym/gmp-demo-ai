@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AlertTriangle, BarChart, CheckCircle, Clock, Database, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -10,42 +11,15 @@ const BatchEvaluationProcessor = ({ users, onComplete }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('idle'); // idle, processing, complete, error
-  const [completedUsers, setCompletedUsers] = useState([]);
+
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [processedUsersCount, setProcessedUsersCount] = useState(0);
   const [sessionId, setSessionId] = useState(null); // Session ID for logging
   const BATCH_SIZE = 5;
 
-  // Load completed users from LocalStorage on component mount
-  useEffect(() => {
-    const savedUsers = localStorage.getItem('completed_users');
-    if (savedUsers) {
-      try {
-        setCompletedUsers(JSON.parse(savedUsers));
-      } catch (error) {
-        console.error('Error loading completed users from LocalStorage:', error);
-        setCompletedUsers([]);
-      }
-    }
-  }, []);
 
-  const saveUserToLocalStorage = (email, totalScore) => {
-    const userRecord = {
-      email,
-      totalScore,
-      finishedAt: new Date().toISOString()
-    };
 
-    const updatedCompletedUsers = [...completedUsers, userRecord];
-    setCompletedUsers(updatedCompletedUsers);
-    
-    try {
-      localStorage.setItem('completed_users', JSON.stringify(updatedCompletedUsers));
-      console.log(`Saved user ${email} with score ${totalScore} to LocalStorage`);
-    } catch (error) {
-      console.error('Error saving to LocalStorage:', error);
-    }
-  };
+
 
   const getCaseData = (caseId) => {
     return hackathonData.find(item => item.id === parseInt(caseId));
