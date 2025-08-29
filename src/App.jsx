@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import UserSearch from './components/UserSearch';
 import CaseQuestions from './components/CaseQuestions';
 
+
 function App() {
   const [selectedUser, setSelectedUser] = useState(null);
 
@@ -22,19 +23,19 @@ function App() {
         </div>
 
 
-        {/* Main Content */}
+       
         <div className="max-w-6xl mx-auto">
-          {/* User Search Component */}
+         
           <UserSearch 
             onUserSelect={handleUserSelect} 
             selectedUser={selectedUser} 
           />
 
-          {/* Case Questions Component - This component includes Gemini AI validation */}
           <CaseQuestions 
             user={selectedUser} 
           />
         </div>
+        
       </div>
     </div>
   );

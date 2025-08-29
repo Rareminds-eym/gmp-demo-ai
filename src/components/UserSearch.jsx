@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { Search, User, Calendar, AlertCircle } from 'lucide-react';
+import { Search, User, Calendar, AlertCircle, Users, BarChart } from 'lucide-react';
+import BatchEvaluationProcessor from './BatchEvaluationProcessor';
 
 const UserSearch = ({ onUserSelect, selectedUser }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -10,6 +11,9 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [connectionTested, setConnectionTested] = useState(false);
+  const [batchUsers, setBatchUsers] = useState([]);
+  const [showBatchProcessor, setShowBatchProcessor] = useState(false);
+  const [loadingBatch, setLoadingBatch] = useState(false);
 
   // Debounced search function
   const searchUsers = useCallback(async (email) => {
@@ -53,7 +57,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
         `)
         .ilike('email', `%${email.trim()}%`)
         .order('updated_at', { ascending: false })
-        .limit(10);
+        .limit(20); // Get more results for potential batch processing
 
       if (error) {
         console.error('Database query failed:', error);
@@ -111,8 +115,124 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
     }
   };
 
+  const loadBatchUsers = async () => {
+    setLoadingBatch(true);
+    setError(null);
+
+    try {
+      // Load the first 10 users from the database for batch processing
+      const { data, error } = await supabase
+        .from('level2_screen3_progress')
+        .select(`
+          id,
+          user_id,
+          email,
+          case_id,
+          selected_case_id,
+          current_stage,
+          progress_percentage,
+          is_completed,
+          created_at,
+          updated_at,
+          idea_statement,
+          stage2_problem,
+          stage3_technology,
+          stage4_collaboration,
+          stage5_creativity,
+          stage6_speed_scale,
+          stage7_impact,
+          stage8_final_problem,
+          stage8_final_technology,
+          stage8_final_collaboration,
+          stage8_final_creativity,
+          stage8_final_speed_scale,
+          stage8_final_impact,
+          stage10_reflection
+        `)
+        .order('id', { ascending: true })
+        .limit(10); // Get first 10 users from the database
+
+      if (error) {
+        console.error('Database query failed:', error);
+        throw error;
+      }
+
+      console.log(`Found ${data ? data.length : 0} users for batch processing`);
+      setBatchUsers(data || []);
+      setShowBatchProcessor(true);
+    } catch (err) {
+      console.error('Error loading batch users:', err);
+      let errorMessage = 'Failed to load users for batch processing. ';
+      
+      if (err.code === 'PGRST301') {
+        errorMessage += 'Table not found or no access permissions.';
+      } else if (err.message.includes('JWT')) {
+        errorMessage += 'Authentication failed. Check your Supabase credentials.';
+      } else {
+        errorMessage += err.message;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setLoadingBatch(false);
+    }
+  };
+
+  const handleBatchComplete = () => {
+    console.log('Batch processing completed');
+    // Could add additional logic here if needed
+  };
+
   return (
-    <div className="w-full max-w-2xl mx-auto mb-8">
+    <div className="w-full max-w-4xl mx-auto mb-8">
+      {/* Batch Processing Controls */}
+      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-3">
+            <Users className="h-8 w-8 text-purple-600" />
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">User Evaluation</h2>
+              <p className="text-gray-600">Process first 10 users from database with AI evaluation</p>
+            </div>
+          </div>
+          
+          <button
+            onClick={loadBatchUsers}
+            disabled={loadingBatch || showBatchProcessor}
+            className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+          >
+            <BarChart className="h-5 w-5" />
+            <span>
+              {loadingBatch ? 'Loading Users...' : showBatchProcessor ? 'First 10 Users Loaded' : 'Load First 10 Users for Batch Processing'}
+            </span>
+          </button>
+        </div>
+        
+        {loadingBatch && (
+          <div className="flex items-center justify-center py-4">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-500 mr-2"></div>
+            <span className="text-gray-600">Loading users for batch processing...</span>
+          </div>
+        )}
+      </div>
+
+      {/* Batch Evaluation Processor */}
+      {showBatchProcessor && (
+        <div className="mb-8">
+          <BatchEvaluationProcessor 
+            users={batchUsers} 
+            onComplete={handleBatchComplete}
+          />
+        </div>
+      )}
+
+      {/* Individual User Search */}
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="flex items-center space-x-3 mb-4">
+          <Search className="h-6 w-6 text-blue-600" />
+          <h3 className="text-xl font-semibold text-gray-900">Individual User Search</h3>
+        </div>
+        
       <div className="relative">
         <div className="relative">
           <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
@@ -213,6 +333,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };
