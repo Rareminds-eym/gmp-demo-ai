@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { CheckCircle, XCircle, AlertTriangle, User, BarChart, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -10,41 +10,14 @@ const BatchEvaluationProcessor = ({ users, onComplete }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('idle'); // idle, processing, complete, error
-  const [completedUsers, setCompletedUsers] = useState([]);
+
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [processedUsersCount, setProcessedUsersCount] = useState(0);
   const BATCH_SIZE = 5;
 
-  // Load completed users from LocalStorage on component mount
-  useEffect(() => {
-    const savedUsers = localStorage.getItem('completed_users');
-    if (savedUsers) {
-      try {
-        setCompletedUsers(JSON.parse(savedUsers));
-      } catch (error) {
-        console.error('Error loading completed users from LocalStorage:', error);
-        setCompletedUsers([]);
-      }
-    }
-  }, []);
 
-  const saveUserToLocalStorage = (email, totalScore) => {
-    const userRecord = {
-      email,
-      totalScore,
-      finishedAt: new Date().toISOString()
-    };
 
-    const updatedCompletedUsers = [...completedUsers, userRecord];
-    setCompletedUsers(updatedCompletedUsers);
-    
-    try {
-      localStorage.setItem('completed_users', JSON.stringify(updatedCompletedUsers));
-      console.log(`Saved user ${email} with score ${totalScore} to LocalStorage`);
-    } catch (error) {
-      console.error('Error saving to LocalStorage:', error);
-    }
-  };
+
 
   const getCaseData = (caseId) => {
     return hackathonData.find(item => item.id === parseInt(caseId));
@@ -222,9 +195,6 @@ Return ONLY a valid JSON object with this structure:
         console.log(`Processing user ${globalIndex + 1}/${users.length}: ${user.email} (Batch ${currentBatchIndex + 1}, User ${i + 1}/${currentBatch.length})`);
 
         const evaluationResult = await evaluateUser(user);
-
-        // Save to LocalStorage immediately after successful evaluation
-        saveUserToLocalStorage(user.email, evaluationResult.totalScore);
 
         // Store result for display
         const userResult = {
@@ -447,20 +417,7 @@ Return ONLY a valid JSON object with this structure:
               Successfully processed {evaluationResults.filter(r => r.status === 'success').length} out of {users.length} users
             </p>
             
-            <div className="bg-white bg-opacity-20 rounded-lg p-4">
-              <h4 className="font-semibold mb-2">Saved to LocalStorage: 'completed_users'</h4>
-              <div className="text-sm space-y-1">
-                {evaluationResults
-                  .filter(r => r.status === 'success')
-                  .map((result, index) => (
-                    <div key={index} className="flex justify-between">
-                      <span>{result.email}</span>
-                      <span>Score: {result.totalScore}</span>
-                    </div>
-                  ))
-                }
-              </div>
-            </div>
+
           </div>
         </div>
       )}
