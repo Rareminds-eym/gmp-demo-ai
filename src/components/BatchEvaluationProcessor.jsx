@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { CheckCircle, XCircle, AlertTriangle, User, BarChart, Clock, Database } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { saveEvaluationResults, saveEvaluationError } from '../lib/databaseService';
+import { AlertTriangle, BarChart, CheckCircle, Clock, Database, XCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { hackathonData } from '../data/HackathonData';
+import { checkEvaluationExists, saveEvaluationError, saveEvaluationResults } from '../lib/databaseService';
 
 const BatchEvaluationProcessor = ({ users, onComplete }) => {
   const [currentUserIndex, setCurrentUserIndex] = useState(0);
@@ -225,6 +224,36 @@ Return ONLY a valid JSON object with this structure:
       try {
         console.log(`Processing user ${globalIndex + 1}/${users.length}: ${user.email} (Batch ${currentBatchIndex + 1}, User ${i + 1}/${currentBatch.length})`);
 
+        // Check if evaluation already exists for this email
+        const existingCheck = await checkEvaluationExists(user.email);
+        
+        if (existingCheck.error) {
+          console.warn(`Error checking existing evaluation for ${user.email}:`, existingCheck.error);
+          // Continue with processing despite check error
+        } else if (existingCheck.exists) {
+          console.log(`Skipping ${user.email} - evaluation already exists with score: ${existingCheck.data.total_score}`);
+          
+          // Add to results as already processed
+          const userResult = {
+            email: user.email,
+            totalScore: existingCheck.data.total_score,
+            status: 'skipped',
+            finishedAt: existingCheck.data.processed_at,
+            skippedReason: 'Already evaluated',
+            savedToDatabase: true
+          };
+
+          setEvaluationResults(prev => [...prev, userResult]);
+          setProcessedUsersCount(prev => prev + 1);
+          
+          // Small delay before next user
+          if (i < currentBatch.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+          
+          continue; // Skip to next user
+        }
+
         const evaluationResult = await evaluateUser(user);
 
         // Save to LocalStorage immediately after successful evaluation
@@ -334,6 +363,8 @@ Return ONLY a valid JSON object with this structure:
     switch (status) {
       case 'success':
         return <CheckCircle className="h-5 w-5 text-green-600" />;
+      case 'skipped':
+        return <AlertTriangle className="h-5 w-5 text-yellow-600" />;
       case 'error':
         return <XCircle className="h-5 w-5 text-red-600" />;
       default:
@@ -448,6 +479,8 @@ Return ONLY a valid JSON object with this structure:
               className={`flex items-center justify-between p-4 rounded-lg border-2 ${
                 result.status === 'success'
                   ? 'bg-green-50 border-green-200'
+                  : result.status === 'skipped'
+                  ? 'bg-yellow-50 border-yellow-200'
                   : 'bg-red-50 border-red-200'
               }`}
             >
@@ -470,6 +503,10 @@ Return ONLY a valid JSON object with this structure:
                   <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
                     Score: {result.totalScore}/100
                   </div>
+                ) : result.status === 'skipped' ? (
+                  <div className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium">
+                    Skipped (Score: {result.totalScore}/100)
+                  </div>
                 ) : (
                   <div className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-medium">
                     Failed
@@ -488,7 +525,9 @@ Return ONLY a valid JSON object with this structure:
             <CheckCircle className="mx-auto h-12 w-12 mb-3" />
             <h3 className="text-2xl font-bold mb-2">Batch Processing Complete!</h3>
             <p className="text-lg mb-4">
-              Successfully processed {evaluationResults.filter(r => r.status === 'success').length} out of {users.length} users
+              Successfully processed {evaluationResults.filter(r => r.status === 'success').length} users,{' '}
+              skipped {evaluationResults.filter(r => r.status === 'skipped').length} already evaluated users{' '}
+              out of {users.length} total users
             </p>
             
             <div className="bg-white bg-opacity-20 rounded-lg p-4">
@@ -501,10 +540,10 @@ Return ONLY a valid JSON object with this structure:
               </div>
               <div className="text-sm space-y-1">
                 {evaluationResults
-                  .filter(r => r.status === 'success')
+                  .filter(r => r.status === 'success' || r.status === 'skipped')
                   .map((result, index) => (
                     <div key={index} className="flex justify-between">
-                      <span>{result.email}</span>
+                      <span>{result.email} {result.status === 'skipped' ? '(skipped)' : ''}</span>
                       <span>Score: {result.totalScore}</span>
                     </div>
                   ))

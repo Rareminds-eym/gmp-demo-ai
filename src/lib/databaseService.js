@@ -407,6 +407,40 @@ export const fetchEvaluationResults = async (email) => {
 };
 
 /**
+ * Checks if an evaluation result already exists for the given email
+ * @param {string} email - User's email
+ * @returns {Object} - Object containing exists flag and any errors
+ */
+export const checkEvaluationExists = async (email) => {
+  try {
+    if (!email) {
+      throw new Error('Email is required');
+    }
+
+    const { data, error } = await supabase
+      .from('evaluation_results')
+      .select('email, processed_at, total_score')
+      .eq('email', email.trim())
+      .limit(1);
+
+    if (error) {
+      console.error('Failed to check evaluation existence:', error);
+      return { exists: false, data: null, error: error.message };
+    }
+
+    const exists = data && data.length > 0;
+    return { 
+      exists, 
+      data: exists ? data[0] : null, 
+      error: null 
+    };
+  } catch (err) {
+    console.error('Error checking evaluation existence:', err);
+    return { exists: false, data: null, error: err.message };
+  }
+};
+
+/**
  * Fetches evaluation results statistics
  * @returns {Object} - Object containing evaluation statistics and any errors
  */
