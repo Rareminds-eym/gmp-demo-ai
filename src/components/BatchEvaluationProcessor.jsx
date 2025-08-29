@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { CheckCircle, XCircle, AlertTriangle, User, BarChart, Clock } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, User, BarChart, Clock, Database } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { saveEvaluationResults, saveEvaluationError } from '../lib/databaseService';
 import { hackathonData } from '../data/HackathonData';
 
 const BatchEvaluationProcessor = ({ users, onComplete }) => {
@@ -209,8 +210,11 @@ Return ONLY a valid JSON object with this structure:
     const currentBatch = getCurrentBatch();
     const batchStartIndex = currentBatchIndex * BATCH_SIZE;
     const totalBatches = Math.ceil(users.length / BATCH_SIZE);
+    
+    // Generate a unique batch ID for database tracking
+    const batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    console.log(`Starting Batch ${currentBatchIndex + 1}/${totalBatches} (Users ${batchStartIndex + 1}-${batchStartIndex + currentBatch.length})`);
+    console.log(`Starting Batch ${currentBatchIndex + 1}/${totalBatches} (Users ${batchStartIndex + 1}-${batchStartIndex + currentBatch.length}) - Batch ID: ${batchId}`);
 
     // Process current batch
     for (let i = 0; i < currentBatch.length; i++) {
@@ -226,13 +230,33 @@ Return ONLY a valid JSON object with this structure:
         // Save to LocalStorage immediately after successful evaluation
         saveUserToLocalStorage(user.email, evaluationResult.totalScore);
 
+        // Save to database
+        try {
+          const dbResult = await saveEvaluationResults({
+            email: user.email,
+            user_id: user.user_id,
+            case_id: user.case_id || user.selected_case_id,
+            aiResults: evaluationResult,
+            batchId: batchId
+          });
+          
+          if (dbResult.error) {
+            console.error(`Database save failed for ${user.email}:`, dbResult.error);
+          } else {
+            console.log(`Successfully saved ${user.email} evaluation to database`);
+          }
+        } catch (dbError) {
+          console.error(`Database save error for ${user.email}:`, dbError);
+        }
+
         // Store result for display
         const userResult = {
           email: user.email,
           totalScore: evaluationResult.totalScore,
           status: 'success',
           finishedAt: new Date().toISOString(),
-          fullResults: evaluationResult
+          fullResults: evaluationResult,
+          savedToDatabase: true // Flag to indicate database save attempt
         };
 
         setEvaluationResults(prev => [...prev, userResult]);
@@ -247,12 +271,32 @@ Return ONLY a valid JSON object with this structure:
       } catch (error) {
         console.error(`Failed to process user ${user.email}:`, error);
 
+        // Save error to database
+        try {
+          const dbResult = await saveEvaluationError({
+            email: user.email,
+            user_id: user.user_id,
+            case_id: user.case_id || user.selected_case_id,
+            error_message: error.message,
+            batchId: batchId
+          });
+          
+          if (dbResult.error) {
+            console.error(`Database error save failed for ${user.email}:`, dbResult.error);
+          } else {
+            console.log(`Successfully saved error for ${user.email} to database`);
+          }
+        } catch (dbError) {
+          console.error(`Database error save failed for ${user.email}:`, dbError);
+        }
+
         const userResult = {
           email: user.email,
           totalScore: 0,
           status: 'error',
           error: error.message,
-          finishedAt: new Date().toISOString()
+          finishedAt: new Date().toISOString(),
+          savedToDatabase: true // Flag to indicate database save attempt
         };
 
         setEvaluationResults(prev => [...prev, userResult]);
@@ -448,7 +492,13 @@ Return ONLY a valid JSON object with this structure:
             </p>
             
             <div className="bg-white bg-opacity-20 rounded-lg p-4">
-              <h4 className="font-semibold mb-2">Saved to LocalStorage: 'completed_users'</h4>
+              <div className="mb-4">
+                <h4 className="font-semibold mb-2 flex items-center space-x-2">
+                  <Database className="h-4 w-4" />
+                  <span>Saved to Database & LocalStorage</span>
+                </h4>
+                <p className="text-sm opacity-90">All evaluation results have been saved to the evaluation_results table</p>
+              </div>
               <div className="text-sm space-y-1">
                 {evaluationResults
                   .filter(r => r.status === 'success')
