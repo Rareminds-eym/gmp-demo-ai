@@ -11,6 +11,9 @@ const BatchEvaluationProcessor = ({ users, onComplete }) => {
   const [isComplete, setIsComplete] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('idle'); // idle, processing, complete, error
   const [completedUsers, setCompletedUsers] = useState([]);
+  const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
+  const [processedUsersCount, setProcessedUsersCount] = useState(0);
+  const BATCH_SIZE = 5;
 
   // Load completed users from LocalStorage on component mount
   useEffect(() => {
@@ -184,7 +187,17 @@ Return ONLY a valid JSON object with this structure:
     }
   };
 
-  const startBatchProcessing = async () => {
+  const getCurrentBatch = () => {
+    const startIndex = currentBatchIndex * BATCH_SIZE;
+    const endIndex = Math.min(startIndex + BATCH_SIZE, users.length);
+    return users.slice(startIndex, endIndex);
+  };
+
+  const hasMoreBatches = () => {
+    return (currentBatchIndex + 1) * BATCH_SIZE < users.length;
+  };
+
+  const processCurrentBatch = async () => {
     if (users.length === 0) {
       alert('No users to process');
       return;
@@ -192,21 +205,27 @@ Return ONLY a valid JSON object with this structure:
 
     setIsProcessing(true);
     setProcessingStatus('processing');
-    setCurrentUserIndex(0);
-    setEvaluationResults([]);
 
-    for (let i = 0; i < users.length; i++) {
-      const user = users[i];
-      setCurrentUserIndex(i);
+    const currentBatch = getCurrentBatch();
+    const batchStartIndex = currentBatchIndex * BATCH_SIZE;
+    const totalBatches = Math.ceil(users.length / BATCH_SIZE);
+
+    console.log(`Starting Batch ${currentBatchIndex + 1}/${totalBatches} (Users ${batchStartIndex + 1}-${batchStartIndex + currentBatch.length})`);
+
+    // Process current batch
+    for (let i = 0; i < currentBatch.length; i++) {
+      const user = currentBatch[i];
+      const globalIndex = batchStartIndex + i;
+      setCurrentUserIndex(globalIndex);
 
       try {
-        console.log(`Processing user ${i + 1}/${users.length}: ${user.email}`);
-        
+        console.log(`Processing user ${globalIndex + 1}/${users.length}: ${user.email} (Batch ${currentBatchIndex + 1}, User ${i + 1}/${currentBatch.length})`);
+
         const evaluationResult = await evaluateUser(user);
-        
+
         // Save to LocalStorage immediately after successful evaluation
         saveUserToLocalStorage(user.email, evaluationResult.totalScore);
-        
+
         // Store result for display
         const userResult = {
           email: user.email,
@@ -215,18 +234,19 @@ Return ONLY a valid JSON object with this structure:
           finishedAt: new Date().toISOString(),
           fullResults: evaluationResult
         };
-        
+
         setEvaluationResults(prev => [...prev, userResult]);
-        
+        setProcessedUsersCount(prev => prev + 1);
+
         console.log(`Successfully processed ${user.email} with score ${evaluationResult.totalScore}`);
-        
+
         // Small delay between users to prevent rate limiting
-        if (i < users.length - 1) {
+        if (i < currentBatch.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (error) {
         console.error(`Failed to process user ${user.email}:`, error);
-        
+
         const userResult = {
           email: user.email,
           totalScore: 0,
@@ -234,18 +254,36 @@ Return ONLY a valid JSON object with this structure:
           error: error.message,
           finishedAt: new Date().toISOString()
         };
-        
+
         setEvaluationResults(prev => [...prev, userResult]);
+        setProcessedUsersCount(prev => prev + 1);
       }
     }
 
+    console.log(`Completed Batch ${currentBatchIndex + 1}/${totalBatches}`);
+
     setIsProcessing(false);
+
+    // Current batch completed
     setProcessingStatus('complete');
     setIsComplete(true);
-    
+
+    console.log(`Batch ${currentBatchIndex + 1} completed! Processed ${currentBatch.length} users.`);
+
     if (onComplete) {
       onComplete();
     }
+  };
+
+  const startBatchProcessing = async () => {
+    // Reset everything for a fresh start
+    setEvaluationResults([]);
+    setProcessedUsersCount(0);
+    setCurrentBatchIndex(0);
+    setIsComplete(false);
+
+    // Start processing the first batch
+    await processCurrentBatch();
   };
 
   const getStatusIcon = (status) => {
@@ -261,7 +299,19 @@ Return ONLY a valid JSON object with this structure:
 
   const getProgressPercentage = () => {
     if (users.length === 0) return 0;
-    return Math.round((evaluationResults.length / users.length) * 100);
+    return Math.round((processedUsersCount / users.length) * 100);
+  };
+
+  const getCurrentBatchInfo = () => {
+    const startIndex = currentBatchIndex * BATCH_SIZE;
+    const endIndex = Math.min(startIndex + BATCH_SIZE, users.length);
+    return {
+      batchNumber: currentBatchIndex + 1,
+      totalBatches: Math.ceil(users.length / BATCH_SIZE),
+      batchStart: startIndex + 1,
+      batchEnd: endIndex,
+      batchSize: endIndex - startIndex
+    };
   };
 
   if (users.length === 0) {
@@ -283,11 +333,19 @@ Return ONLY a valid JSON object with this structure:
           <div className="flex items-center space-x-3">
             <BarChart className="h-8 w-8 text-blue-600" />
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Evaluation Processor</h2>
-              <p className="text-gray-600">Processing {users.length} users individually</p>
+              <h2 className="text-2xl font-bold text-gray-900">Batch Evaluation Processor</h2>
+              <p className="text-gray-600">
+                Processing current batch of {users.length} users
+                {processedUsersCount > 0 && ` (${processedUsersCount}/${users.length} completed)`}
+              </p>
+              {isProcessing && (
+                <p className="text-sm text-blue-600">
+                  Processing batch of {users.length} users...
+                </p>
+              )}
             </div>
           </div>
-          
+
           {!isProcessing && !isComplete && (
             <button
               onClick={startBatchProcessing}
@@ -299,11 +357,11 @@ Return ONLY a valid JSON object with this structure:
         </div>
 
         {/* Progress Bar */}
-        {(isProcessing || isComplete) && (
+        {(isProcessing || isComplete || processedUsersCount > 0) && (
           <div className="mb-6">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium text-gray-700">
-                Progress: {evaluationResults.length} of {users.length} users processed
+                Progress: {processedUsersCount} of {users.length} users processed
               </span>
               <span className="text-sm font-medium text-gray-700">
                 {getProgressPercentage()}%
@@ -315,6 +373,7 @@ Return ONLY a valid JSON object with this structure:
                 style={{ width: `${getProgressPercentage()}%` }}
               ></div>
             </div>
+
           </div>
         )}
 
@@ -323,9 +382,12 @@ Return ONLY a valid JSON object with this structure:
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
             <div className="flex items-center space-x-2">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
-              <span className="font-medium text-blue-900">
-                Currently processing: {users[currentUserIndex]?.email}
-              </span>
+              <div className="font-medium text-blue-900">
+                <div>Currently processing: {users[currentUserIndex]?.email}</div>
+                <div className="text-sm text-blue-700">
+                  User {currentUserIndex + 1} of {users.length} in current batch
+                </div>
+              </div>
             </div>
           </div>
         )}

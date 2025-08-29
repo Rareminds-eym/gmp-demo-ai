@@ -106,6 +106,95 @@ const CaseQuestions = ({ user }) => {
       const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
 
       // Build the prompt with questions and answers
+//       const prompt = `
+// You are evaluating hackathon innovation responses based on a specific case study scenario.
+
+// **IMPORTANT EVALUATION RULES:**
+// - The CASE STUDY below is the PRIMARY context that all participant responses should address
+// - All subsequent questions (Stages 1-10) are SUBQUESTIONS that should relate to and build upon the case study scenario
+// - Evaluate how well each response connects to and addresses the specific case study context
+// - Score higher for responses that demonstrate understanding of the case study and provide relevant, contextual solutions
+
+// **CASE STUDY (PRIMARY EVALUATION CONTEXT):**
+// ${caseData?.caseFile || 'No case study provided'}
+
+// **PARTICIPANT'S RESPONSES TO SUBQUESTIONS:**
+
+// **Stage 1 - YOUR INNOVATION IDEA:**
+// Question: "I want to solve '___' for '___' by '___'"
+// What problem: ${answers.stage1_idea_what}
+// Who faces it: ${answers.stage1_idea_who}
+// How to solve: ${answers.stage1_idea_how}
+
+// **Stage 2 - Problem Analysis:**
+// Question: "${getPromptById(2)?.description || 'What issue or need are you addressing? Who faces this problem?'}"
+// Answer: ${answers.stage2_problem}
+
+// **Stage 3 - Technology:**
+// Question: "${getPromptById(3)?.description || 'What tool, app, software, machine, or digital aid can make your solution stronger?'}"
+// Answer: ${answers.stage3_technology}
+
+// **Stage 4 - Collaboration:**
+// Question: "${getPromptById(4)?.description || 'Who can you team up with to make this idea bigger?'}"
+// Answer: ${answers.stage4_collaboration}
+
+// **Stage 5 - Creativity:**
+// Question: "${getPromptById(5)?.description || 'What unique feature, design, or new approach makes your idea stand out?'}"
+// Answer: ${answers.stage5_creativity}
+
+// **Stage 6 - Speed & Scale:**
+// Question: "${getPromptById(6)?.description || 'How can your solution be applied quickly and scaled?'}"
+// Answer: ${answers.stage6_speed_scale}
+
+// **Stage 7 - Impact:**
+// Question: "${getPromptById(7)?.description || 'How does your idea create value?'}"
+// Answer: ${answers.stage7_impact}
+
+// **Stage 8 - Final Pitch:**
+// Question: "${getPromptById(8)?.description || 'Our innovation solves ___ by using ___, built with ___, adding ___. It can grow with ___ and will create ___.'}'"
+// Final Problem: ${answers.stage8_final_problem}
+// Final Technology: ${answers.stage8_final_technology}
+// Final Collaboration: ${answers.stage8_final_collaboration}
+// Final Creativity: ${answers.stage8_final_creativity}
+// Final Speed & Scale: ${answers.stage8_final_speed_scale}
+// Final Impact: ${answers.stage8_final_impact}
+
+// **Stage 10 - Reflection:**
+// Question: "${getPromptById(10)?.description || 'What did you learn, what would you improve?'}"
+// Answer: ${answers.stage10_reflection}
+
+// **Overall Idea Statement:**
+// ${answers.idea_statement}
+
+// **EVALUATION CRITERIA:**
+// Please evaluate based on:
+// 1. **CASE STUDY RELEVANCE** - How well do the responses address the specific case study scenario? (HIGHEST PRIORITY)
+// 2. **CONTEXTUAL UNDERSTANDING** - Does the participant demonstrate understanding of the case study context and constraints?
+// 3. Completeness and depth of responses
+// 4. Innovation and creativity within the case study context
+// 5. Feasibility and practicality of solutions for the case study scenario
+// 6. Potential impact and scalability relevant to the case study
+// 7. Coherence between stages and consistency with the case study
+// 8. Quality of reflection and learning from the case study experience
+
+// Return ONLY a valid JSON object with this structure:
+// {
+//   "totalScore": <integer 0-100>,
+//   "stageScores": {
+//     "idea": {"score": <integer 0-15>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"},
+//     "problem": {"score": <integer 0-15>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"},
+//     "technology": {"score": <integer 0-10>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"},
+//     "collaboration": {"score": <integer 0-10>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"},
+//     "creativity": {"score": <integer 0-15>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"},
+//     "scale": {"score": <integer 0-10>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"},
+//     "impact": {"score": <integer 0-15>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"},
+//     "pitch": {"score": <integer 0-10>, "status": "excellent|good|needs_improvement|poor", "feedback": "specific feedback"}
+//   },
+//   "overallFeedback": "comprehensive feedback with strengths, areas for improvement, and suggestions",
+//   "recommendations": ["specific actionable recommendation 1", "recommendation 2", "recommendation 3"]
+// }
+// `;
+ // Build the evaluation prompt
       const prompt = `
 You are evaluating hackathon innovation responses based on a specific case study scenario.
 
@@ -122,49 +211,44 @@ ${caseData?.caseFile || 'No case study provided'}
 
 **Stage 1 - YOUR INNOVATION IDEA:**
 Question: "I want to solve '___' for '___' by '___'"
-What problem: ${answers.stage1_idea_what}
-Who faces it: ${answers.stage1_idea_who}
-How to solve: ${answers.stage1_idea_how}
+Answer: ${user.idea_statement || 'No response provided'}
 
 **Stage 2 - Problem Analysis:**
 Question: "${getPromptById(2)?.description || 'What issue or need are you addressing? Who faces this problem?'}"
-Answer: ${answers.stage2_problem}
+Answer: ${user.stage2_problem || 'No response provided'}
 
 **Stage 3 - Technology:**
 Question: "${getPromptById(3)?.description || 'What tool, app, software, machine, or digital aid can make your solution stronger?'}"
-Answer: ${answers.stage3_technology}
+Answer: ${user.stage3_technology || 'No response provided'}
 
 **Stage 4 - Collaboration:**
 Question: "${getPromptById(4)?.description || 'Who can you team up with to make this idea bigger?'}"
-Answer: ${answers.stage4_collaboration}
+Answer: ${user.stage4_collaboration || 'No response provided'}
 
 **Stage 5 - Creativity:**
 Question: "${getPromptById(5)?.description || 'What unique feature, design, or new approach makes your idea stand out?'}"
-Answer: ${answers.stage5_creativity}
+Answer: ${user.stage5_creativity || 'No response provided'}
 
 **Stage 6 - Speed & Scale:**
 Question: "${getPromptById(6)?.description || 'How can your solution be applied quickly and scaled?'}"
-Answer: ${answers.stage6_speed_scale}
+Answer: ${user.stage6_speed_scale || 'No response provided'}
 
 **Stage 7 - Impact:**
 Question: "${getPromptById(7)?.description || 'How does your idea create value?'}"
-Answer: ${answers.stage7_impact}
+Answer: ${user.stage7_impact || 'No response provided'}
 
 **Stage 8 - Final Pitch:**
 Question: "${getPromptById(8)?.description || 'Our innovation solves ___ by using ___, built with ___, adding ___. It can grow with ___ and will create ___.'}'"
-Final Problem: ${answers.stage8_final_problem}
-Final Technology: ${answers.stage8_final_technology}
-Final Collaboration: ${answers.stage8_final_collaboration}
-Final Creativity: ${answers.stage8_final_creativity}
-Final Speed & Scale: ${answers.stage8_final_speed_scale}
-Final Impact: ${answers.stage8_final_impact}
+Final Problem: ${user.stage8_final_problem || 'No response provided'}
+Final Technology: ${user.stage8_final_technology || 'No response provided'}
+Final Collaboration: ${user.stage8_final_collaboration || 'No response provided'}
+Final Creativity: ${user.stage8_final_creativity || 'No response provided'}
+Final Speed & Scale: ${user.stage8_final_speed_scale || 'No response provided'}
+Final Impact: ${user.stage8_final_impact || 'No response provided'}
 
 **Stage 10 - Reflection:**
 Question: "${getPromptById(10)?.description || 'What did you learn, what would you improve?'}"
-Answer: ${answers.stage10_reflection}
-
-**Overall Idea Statement:**
-${answers.idea_statement}
+Answer: ${user.stage10_reflection || 'No response provided'}
 
 **EVALUATION CRITERIA:**
 Please evaluate based on:
@@ -192,8 +276,7 @@ Return ONLY a valid JSON object with this structure:
   },
   "overallFeedback": "comprehensive feedback with strengths, areas for improvement, and suggestions",
   "recommendations": ["specific actionable recommendation 1", "recommendation 2", "recommendation 3"]
-}
-`;
+}`;
 
       const result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: prompt }] }],

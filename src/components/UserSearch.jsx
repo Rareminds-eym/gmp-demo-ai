@@ -14,6 +14,8 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
   const [batchUsers, setBatchUsers] = useState([]);
   const [showBatchProcessor, setShowBatchProcessor] = useState(false);
   const [loadingBatch, setLoadingBatch] = useState(false);
+  const [currentOffset, setCurrentOffset] = useState(0);
+  const [batchComplete, setBatchComplete] = useState(false);
 
   // Debounced search function
   const searchUsers = useCallback(async (email) => {
@@ -115,18 +117,44 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
     }
   };
 
-  const loadBatchUsers = async () => {
+  const getCompletedUserIds = () => {
+    const savedUsers = localStorage.getItem('completed_users');
+    if (savedUsers) {
+      try {
+        const completedUsers = JSON.parse(savedUsers);
+        return completedUsers.map(user => user.email);
+      } catch (error) {
+        console.error('Error loading completed users from LocalStorage:', error);
+        return [];
+      }
+    }
+    return [];
+  };
+
+  const loadBatchUsers = async (isNextBatch = false) => {
     setLoadingBatch(true);
     setError(null);
+    setBatchComplete(false);
 
     try {
-      // Load the first 10 users from the database for batch processing
+      const completedEmails = getCompletedUserIds();
+      console.log(`Completed users to skip: ${completedEmails.length}`);
+
+      // Calculate batch range based on start_id
+      const batchNumber = Math.floor(currentOffset / 5);
+      const startIdFrom = (batchNumber * 5) + 1; // Batch 1: 1-5, Batch 2: 6-10, etc.
+      const startIdTo = startIdFrom + 4; // End of range
+
+      console.log(`Loading batch ${batchNumber + 1}, start_id range: ${startIdFrom}-${startIdTo}`);
+
+      // Load users based on start_id column for sequential ordering
       const { data, error } = await supabase
         .from('level2_screen3_progress')
         .select(`
           id,
           user_id,
           email,
+          start_id,
           case_id,
           selected_case_id,
           current_stage,
@@ -149,21 +177,36 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
           stage8_final_impact,
           stage10_reflection
         `)
-        .order('id', { ascending: true })
-        .limit(10); // Get first 10 users from the database
+        .gte('start_id', startIdFrom)
+        .lte('start_id', startIdTo)
+        .order('start_id', { ascending: true });
 
       if (error) {
         console.error('Database query failed:', error);
         throw error;
       }
 
-      console.log(`Found ${data ? data.length : 0} users for batch processing`);
-      setBatchUsers(data || []);
+      // Filter out completed users
+      const uncompletedUsers = (data || []).filter(user => !completedEmails.includes(user.email));
+
+      console.log(`Found ${data ? data.length : 0} users in start_id range ${startIdFrom}-${startIdTo}, ${uncompletedUsers.length} uncompleted`);
+
+      if (uncompletedUsers.length === 0) {
+        setError(`No uncompleted users found in start_id range ${startIdFrom}-${startIdTo}`);
+        return;
+      }
+
+      setBatchUsers(uncompletedUsers);
       setShowBatchProcessor(true);
+      setBatchComplete(false); // Reset batch completion status
+
+      // Update offset for next batch (move to next set of 5)
+      setCurrentOffset(prev => prev + 5);
+
     } catch (err) {
       console.error('Error loading batch users:', err);
       let errorMessage = 'Failed to load users for batch processing. ';
-      
+
       if (err.code === 'PGRST301') {
         errorMessage += 'Table not found or no access permissions.';
       } else if (err.message.includes('JWT')) {
@@ -171,7 +214,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
       } else {
         errorMessage += err.message;
       }
-      
+
       setError(errorMessage);
     } finally {
       setLoadingBatch(false);
@@ -180,7 +223,16 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
 
   const handleBatchComplete = () => {
     console.log('Batch processing completed');
-    // Could add additional logic here if needed
+    setBatchComplete(true);
+  };
+
+  const loadNextBatch = async () => {
+    // Reset the batch processor state
+    setBatchComplete(false);
+    setShowBatchProcessor(false);
+
+    // Load next batch of users
+    await loadBatchUsers(true);
   };
 
   return (
@@ -192,20 +244,42 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
             <Users className="h-8 w-8 text-purple-600" />
             <div>
               <h2 className="text-2xl font-bold text-gray-900">User Evaluation</h2>
-              <p className="text-gray-600">Process first 10 users from database with AI evaluation</p>
+              <p className="text-gray-600">Process first 5 users from database with AI evaluation</p>
             </div>
           </div>
           
-          <button
-            onClick={loadBatchUsers}
-            disabled={loadingBatch || showBatchProcessor}
-            className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-          >
-            <BarChart className="h-5 w-5" />
-            <span>
-              {loadingBatch ? 'Loading Users...' : showBatchProcessor ? 'First 10 Users Loaded' : 'Load First 10 Users for Batch Processing'}
-            </span>
-          </button>
+          {!showBatchProcessor && (
+            <button
+              onClick={() => loadBatchUsers(false)}
+              disabled={loadingBatch}
+              className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+            >
+              <BarChart className="h-5 w-5" />
+              <span>
+                {loadingBatch ? 'Loading Users...' : 'Load First 5 Users for Batch Processing'}
+              </span>
+            </button>
+          )}
+
+          {showBatchProcessor && batchComplete && (
+            <button
+              onClick={loadNextBatch}
+              disabled={loadingBatch}
+              className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+            >
+              <BarChart className="h-5 w-5" />
+              <span>
+                {loadingBatch ? 'Loading Next Users...' : 'Load Next 5 Users'}
+              </span>
+            </button>
+          )}
+
+          {showBatchProcessor && !batchComplete && (
+            <div className="flex items-center space-x-2 bg-gray-100 text-gray-600 font-semibold py-3 px-6 rounded-lg">
+              <BarChart className="h-5 w-5" />
+              <span>Current Batch Processing...</span>
+            </div>
+          )}
         </div>
         
         {loadingBatch && (
