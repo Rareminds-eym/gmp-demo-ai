@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { Search, User, Calendar, AlertCircle, Users, BarChart } from 'lucide-react';
+import { Search, User, Calendar, AlertCircle, Users, BarChart, ChevronDown } from 'lucide-react';
 import BatchEvaluationProcessor from './BatchEvaluationProcessor';
 
 const UserSearch = ({ onUserSelect, selectedUser }) => {
@@ -16,6 +16,8 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
   const [loadingBatch, setLoadingBatch] = useState(false);
   const [currentOffset, setCurrentOffset] = useState(0);
   const [batchComplete, setBatchComplete] = useState(false);
+  const [selectedDropdownItem, setSelectedDropdownItem] = useState('GMP');
+  const [showDropdown, setShowDropdown] = useState(false);
 
   // Debounced search function
   const searchUsers = useCallback(async (email) => {
@@ -117,8 +119,52 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
     }
   };
 
-  const getCompletedUserIds = () => {
-    return [];
+  const getEvaluationStatusSummary = async () => {
+    try {
+      // Get detailed evaluation status information for better logging
+      const { data, error } = await supabase
+        .from('evaluation_results')
+        .select('email, evaluation_status');
+
+      if (error) {
+        console.error('Error fetching evaluation status summary:', error);
+        return { successEmails: [], errorEmails: [], totalEvaluated: 0 };
+      }
+
+      const successEmails = (data || []).filter(record => record.evaluation_status === 'success').map(record => record.email);
+      const errorEmails = (data || []).filter(record => record.evaluation_status === 'error').map(record => record.email);
+
+      console.log(`Evaluation Status Summary:`);
+      console.log(`- ${successEmails.length} users with successful evaluations (will be skipped)`);
+      console.log(`- ${errorEmails.length} users with error status (will be re-processed):`, errorEmails);
+
+      return { successEmails, errorEmails, totalEvaluated: data?.length || 0 };
+    } catch (err) {
+      console.error('Error in getEvaluationStatusSummary:', err);
+      return { successEmails: [], errorEmails: [], totalEvaluated: 0 };
+    }
+  };
+
+  const getCompletedUserIds = async () => {
+    try {
+      // Query evaluation_results table to get emails that already have successful evaluations
+      // Users with 'error' status should be re-processed, so only exclude 'success' status
+      const { data, error } = await supabase
+        .from('evaluation_results')
+        .select('email')
+        .eq('evaluation_status', 'success');
+
+      if (error) {
+        console.error('Error fetching completed evaluations:', error);
+        return []; // Return empty array on error to avoid blocking processing
+      }
+
+      const completedEmails = (data || []).map(record => record.email);
+      return completedEmails;
+    } catch (err) {
+      console.error('Error in getCompletedUserIds:', err);
+      return []; // Return empty array on error to avoid blocking processing
+    }
   };
 
   const loadBatchUsers = async (isNextBatch = false) => {
@@ -127,71 +173,114 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
     setBatchComplete(false);
 
     try {
-      const completedEmails = getCompletedUserIds();
-      console.log(`Completed users to skip: ${completedEmails.length}`);
+      // Get detailed evaluation status summary for better logging
+      const statusSummary = await getEvaluationStatusSummary();
+      const completedEmails = await getCompletedUserIds();
 
-      // Calculate batch range based on start_id
-      const batchNumber = Math.floor(currentOffset / 5);
-      const startIdFrom = (batchNumber * 5) + 1; // Batch 1: 1-5, Batch 2: 6-10, etc.
-      const startIdTo = startIdFrom + 4; // End of range
+      console.log(`Users to skip: ${completedEmails.length} (successful evaluations only)`);
 
-      console.log(`Loading batch ${batchNumber + 1}, start_id range: ${startIdFrom}-${startIdTo}`);
+      const DESIRED_BATCH_SIZE = 5;
+      let uncompletedUsers = [];
+      let currentStartId = Math.floor(currentOffset / 5) * 5 + 1; // Start from current batch position
+      let searchAttempts = 0;
+      const MAX_SEARCH_ATTEMPTS = 20; // Prevent infinite loops
 
-      // Load users based on start_id column for sequential ordering
-      const { data, error } = await supabase
-        .from('level2_screen3_progress')
-        .select(`
-          id,
-          user_id,
-          email,
-          start_id,
-          case_id,
-          selected_case_id,
-          current_stage,
-          progress_percentage,
-          is_completed,
-          created_at,
-          updated_at,
-          idea_statement,
-          stage2_problem,
-          stage3_technology,
-          stage4_collaboration,
-          stage5_creativity,
-          stage6_speed_scale,
-          stage7_impact,
-          stage8_final_problem,
-          stage8_final_technology,
-          stage8_final_collaboration,
-          stage8_final_creativity,
-          stage8_final_speed_scale,
-          stage8_final_impact,
-          stage10_reflection
-        `)
-        .gte('start_id', startIdFrom)
-        .lte('start_id', startIdTo)
-        .order('start_id', { ascending: true });
+      console.log(`Looking for ${DESIRED_BATCH_SIZE} users starting from start_id: ${currentStartId}`);
 
-      if (error) {
-        console.error('Database query failed:', error);
-        throw error;
+      // Keep fetching users until we have enough uncompleted ones or reach max attempts
+      while (uncompletedUsers.length < DESIRED_BATCH_SIZE && searchAttempts < MAX_SEARCH_ATTEMPTS) {
+        const batchStartId = currentStartId + (searchAttempts * 5);
+        const batchEndId = batchStartId + 4;
+
+        console.log(`Search attempt ${searchAttempts + 1}: Checking start_id range ${batchStartId}-${batchEndId}`);
+
+        // Load users from current range
+        const { data, error } = await supabase
+          .from('level2_screen3_progress')
+          .select(`
+            id,
+            user_id,
+            email,
+            start_id,
+            case_id,
+            selected_case_id,
+            current_stage,
+            progress_percentage,
+            is_completed,
+            created_at,
+            updated_at,
+            idea_statement,
+            stage2_problem,
+            stage3_technology,
+            stage4_collaboration,
+            stage5_creativity,
+            stage6_speed_scale,
+            stage7_impact,
+            stage8_final_problem,
+            stage8_final_technology,
+            stage8_final_collaboration,
+            stage8_final_creativity,
+            stage8_final_speed_scale,
+            stage8_final_impact,
+            stage10_reflection
+          `)
+          .gte('start_id', batchStartId)
+          .lte('start_id', batchEndId)
+          .order('start_id', { ascending: true });
+
+        if (error) {
+          console.error('Database query failed:', error);
+          throw error;
+        }
+
+        if (!data || data.length === 0) {
+          console.log(`No more users found in range ${batchStartId}-${batchEndId}, stopping search`);
+          break;
+        }
+
+        // Filter out users who already have successful evaluations
+        // Users with 'error' status will be included for re-processing
+        const newUncompletedUsers = data.filter(user => {
+          const hasSuccessfulEvaluation = completedEmails.includes(user.email);
+          const hasErrorStatus = statusSummary.errorEmails.includes(user.email);
+
+          if (hasSuccessfulEvaluation) {
+            console.log(`Skipping ${user.email} - already has successful evaluation in database`);
+          } else if (hasErrorStatus) {
+            console.log(`Including ${user.email} - has error status, will re-process and update record`);
+          } else {
+            console.log(`Including ${user.email} - new user, needs first evaluation`);
+          }
+          return !hasSuccessfulEvaluation;
+        });
+
+        // Add new uncompleted users to our collection
+        uncompletedUsers = [...uncompletedUsers, ...newUncompletedUsers];
+
+        const newUsers = newUncompletedUsers.filter(user => !statusSummary.errorEmails.includes(user.email));
+        const retryUsers = newUncompletedUsers.filter(user => statusSummary.errorEmails.includes(user.email));
+
+        console.log(`Found ${data.length} users in range ${batchStartId}-${batchEndId}: ${newUsers.length} new + ${retryUsers.length} retry (error status). Total collected: ${uncompletedUsers.length}/${DESIRED_BATCH_SIZE}`);
+
+        searchAttempts++;
       }
 
-      // Filter out completed users
-      const uncompletedUsers = (data || []).filter(user => !completedEmails.includes(user.email));
+      // Take only the desired batch size
+      const finalBatchUsers = uncompletedUsers.slice(0, DESIRED_BATCH_SIZE);
 
-      console.log(`Found ${data ? data.length : 0} users in start_id range ${startIdFrom}-${startIdTo}, ${uncompletedUsers.length} uncompleted`);
+      console.log(`Final result: Collected ${finalBatchUsers.length} users for processing after ${searchAttempts} search attempts`);
 
-      if (uncompletedUsers.length === 0) {
-        setError(`No uncompleted users found in start_id range ${startIdFrom}-${startIdTo}`);
+      if (finalBatchUsers.length === 0) {
+        setError(`No users available for evaluation. All users in the searched ranges already have successful evaluations. Users with error status have been included for re-processing.`);
         return;
       }
 
-      setBatchUsers(uncompletedUsers);
+      setBatchUsers(finalBatchUsers);
       setShowBatchProcessor(true);
       setBatchComplete(false); // Reset batch completion status
 
-      // Update offset for next batch (move to next set of 5)
-      setCurrentOffset(prev => prev + 5);
+      // Update offset for next batch - move forward by the number of ranges we searched
+      setCurrentOffset(prev => prev + (searchAttempts * 5));
 
     } catch (err) {
       console.error('Error loading batch users:', err);
@@ -233,9 +322,39 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
           <div className="flex items-center space-x-3">
             <Users className="h-8 w-8 text-purple-600" />
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">User Evaluation</h2>
-              <p className="text-gray-600">Process first 5 users from database with AI evaluation</p>
+              <h2 className="text-2xl font-bold text-gray-900">Smart Batch Processing</h2>
+              <p className="text-gray-600">Finds 5 users who need evaluation</p>
             </div>
+          </div>
+
+          {/* Dropdown Menu */}
+          <div className="relative">
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="flex items-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors"
+            >
+              <span>{selectedDropdownItem}</span>
+              <ChevronDown className="h-4 w-4" />
+            </button>
+
+            {showDropdown && (
+              <div className="absolute right-0 mt-2 w-32 bg-white border border-gray-300 rounded-lg shadow-lg z-10">
+                {['GMP', 'MC', 'FSQM'].map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => {
+                      setSelectedDropdownItem(item);
+                      setShowDropdown(false);
+                    }}
+                    className={`w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors ${
+                      selectedDropdownItem === item ? 'bg-purple-50 text-purple-700' : 'text-gray-700'
+                    } ${item === 'GMP' ? 'rounded-t-lg' : ''} ${item === 'FSQM' ? 'rounded-b-lg' : ''}`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           
           {!showBatchProcessor && (
@@ -246,7 +365,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
             >
               <BarChart className="h-5 w-5" />
               <span>
-                {loadingBatch ? 'Loading Users...' : 'Load First 5 Users for Batch Processing'}
+                {loadingBatch ? 'Finding Users...' : 'Find 5 Users for Evaluation'}
               </span>
             </button>
           )}
@@ -275,7 +394,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
         {loadingBatch && (
           <div className="flex items-center justify-center py-4">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-500 mr-2"></div>
-            <span className="text-gray-600">Loading users for batch processing...</span>
+            <span className="text-gray-600">Finding users who need evaluation...</span>
           </div>
         )}
       </div>

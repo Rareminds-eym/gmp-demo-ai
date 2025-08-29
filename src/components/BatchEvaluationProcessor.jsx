@@ -418,12 +418,15 @@ Return ONLY a valid JSON object with this structure:
         let dbSaveSuccessful = false;
         let dbErrorMessage = null;
         let isUpdate = existingCheck.exists && existingCheck.needsUpdate;
-        
+
+        console.log(`🔄 Attempting database ${isUpdate ? 'update' : 'save'} for ${user.email}...`);
+
         try {
           let dbResult;
-          
+
           if (isUpdate) {
             // Update existing record
+            console.log(`   Updating existing record ID: ${existingCheck.data.id}`);
             dbResult = await updateEvaluationResults(existingCheck.data.id, {
               email: user.email,
               user_id: user.user_id,
@@ -431,16 +434,17 @@ Return ONLY a valid JSON object with this structure:
               aiResults: evaluationResult,
               batchId: batchId
             });
-            
+
             if (dbResult.error) {
-              console.error(`Database update failed for ${user.email}:`, dbResult.error);
+              console.error(`❌ Database update failed for ${user.email}:`, dbResult.error);
               dbErrorMessage = dbResult.error;
             } else {
-              console.log(`Successfully updated ${user.email} evaluation in database`);
+              console.log(`✅ Successfully updated ${user.email} evaluation in database`);
               dbSaveSuccessful = true;
             }
           } else {
             // Insert new record
+            console.log(`   Inserting new record for ${user.email}`);
             dbResult = await saveEvaluationResults({
               email: user.email,
               user_id: user.user_id,
@@ -448,18 +452,31 @@ Return ONLY a valid JSON object with this structure:
               aiResults: evaluationResult,
               batchId: batchId
             });
-            
+
             if (dbResult.error) {
-              console.error(`Database save failed for ${user.email}:`, dbResult.error);
+              console.error(`❌ Database save failed for ${user.email}:`, dbResult.error);
               dbErrorMessage = dbResult.error;
             } else {
-              console.log(`Successfully saved ${user.email} evaluation to database`);
+              console.log(`✅ Successfully saved ${user.email} evaluation to database`);
               dbSaveSuccessful = true;
             }
           }
+
+          // Additional debugging info
+          console.log(`   DB operation result for ${user.email}:`, {
+            success: dbSaveSuccessful,
+            error: dbErrorMessage,
+            resultData: dbResult?.data ? 'Present' : 'Missing'
+          });
+
         } catch (dbError) {
-          console.error(`Database ${isUpdate ? 'update' : 'save'} error for ${user.email}:`, dbError);
+          console.error(`💥 Database ${isUpdate ? 'update' : 'save'} exception for ${user.email}:`, dbError);
           dbErrorMessage = dbError.message;
+          console.log(`   Exception details:`, {
+            name: dbError.name,
+            message: dbError.message,
+            stack: dbError.stack?.substring(0, 200) + '...'
+          });
         }
 
         // Log successful user processing
@@ -499,9 +516,18 @@ Return ONLY a valid JSON object with this structure:
           status: isUpdate ? 'updated' : 'success',
           finishedAt: new Date().toISOString(),
           fullResults: evaluationResult,
-          savedToDatabase: true, // Flag to indicate database save attempt
+          savedToDatabase: dbSaveSuccessful, // Actual database save status
+          dbError: dbErrorMessage, // Include error message if save failed
           wasUpdate: isUpdate
         };
+
+        // DEBUGGING: Log the result being stored
+        console.log(`📝 Storing result for ${user.email}:`, {
+          status: userResult.status,
+          score: userResult.totalScore,
+          dbSaved: userResult.savedToDatabase,
+          dbError: userResult.dbError
+        });
 
         setEvaluationResults(prev => [...prev, userResult]);
         setProcessedUsersCount(prev => prev + 1);
@@ -575,8 +601,17 @@ Return ONLY a valid JSON object with this structure:
           status: 'error',
           error: error.message,
           finishedAt: new Date().toISOString(),
-          savedToDatabase: true // Flag to indicate database save attempt
+          savedToDatabase: dbSaveSuccessful, // Actual database save status for error record
+          dbError: dbErrorMessage // Include database error if save failed
         };
+
+        // DEBUGGING: Log the error result being stored
+        console.log(`📝 Storing ERROR result for ${user.email}:`, {
+          status: userResult.status,
+          error: userResult.error,
+          dbSaved: userResult.savedToDatabase,
+          dbError: userResult.dbError
+        });
 
         setEvaluationResults(prev => [...prev, userResult]);
         setProcessedUsersCount(prev => prev + 1);
@@ -585,6 +620,32 @@ Return ONLY a valid JSON object with this structure:
 
     const batchDuration = Date.now() - batchStartTime;
     console.log(`Completed Batch ${currentBatchIndex + 1}/${totalBatches}`);
+
+    // DEBUGGING: Detailed batch analysis
+    console.log(`\n=== BATCH ${currentBatchIndex + 1} DETAILED ANALYSIS ===`);
+    console.log(`Input: ${currentBatch.length} users to process`);
+    console.log(`Output: ${evaluationResults.length} results recorded`);
+
+    // Analyze each user's outcome
+    currentBatch.forEach((user, index) => {
+      const result = evaluationResults.find(r => r.email === user.email);
+      if (result) {
+        console.log(`✓ ${user.email}: ${result.status} (score: ${result.totalScore}) - DB saved: ${result.savedToDatabase}`);
+      } else {
+        console.log(`✗ ${user.email}: NO RESULT RECORDED - This is the missing user!`);
+      }
+    });
+
+    // Check for database save failures
+    const dbSaveFailures = evaluationResults.filter(r => r.savedToDatabase === false);
+    if (dbSaveFailures.length > 0) {
+      console.log(`\n⚠️  DATABASE SAVE FAILURES: ${dbSaveFailures.length} users`);
+      dbSaveFailures.forEach(failure => {
+        console.log(`   - ${failure.email}: ${failure.error || 'Unknown error'}`);
+      });
+    }
+
+    console.log(`=== END BATCH ANALYSIS ===\n`);
 
     // Log batch completion
     if (sessionId) {
