@@ -407,6 +407,81 @@ export const fetchEvaluationResults = async (email) => {
 };
 
 /**
+ * Debug function to check process logs table and show sample data
+ * @returns {Object} - Sample data from process_logs table
+ */
+export const debugProcessLogs = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('process_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (error) {
+      console.error('Failed to fetch process logs:', error);
+      return { data: null, error: error.message };
+    }
+
+    console.log('Recent process logs:', data);
+    
+    // Check for null values
+    if (data && data.length > 0) {
+      const firstRecord = data[0];
+      const nullFields = [];
+      
+      Object.keys(firstRecord).forEach(key => {
+        if (firstRecord[key] === null || firstRecord[key] === undefined) {
+          nullFields.push(key);
+        }
+      });
+      
+      console.log('Fields with null values:', nullFields);
+    }
+
+    return { data, error: null };
+  } catch (err) {
+    console.error('Error debugging process logs:', err);
+    return { data: null, error: err.message };
+  }
+};
+
+/**
+ * Simple test function to insert a basic log entry
+ * @returns {Object} - Test result
+ */
+export const testLogInsertion = async () => {
+  try {
+    const testRecord = {
+      session_id: 'test_session_' + Date.now(),
+      log_level: 'INFO',
+      log_type: 'TEST',
+      message: 'Test log message',
+      component_name: 'TestComponent',
+      environment: 'development'
+    };
+
+    console.log('Inserting test record:', testRecord);
+
+    const { data, error } = await supabase
+      .from('process_logs')
+      .insert([testRecord])
+      .select();
+
+    if (error) {
+      console.error('Test insertion failed:', error);
+      return { success: false, error: error.message, data: null };
+    }
+
+    console.log('Test insertion successful:', data[0]);
+    return { success: true, error: null, data: data[0] };
+  } catch (err) {
+    console.error('Test insertion error:', err);
+    return { success: false, error: err.message, data: null };
+  }
+};
+
+/**
  * Logs process events to the process_logs table
  * @param {Object} logData - The log data
  * @param {string} logData.sessionId - Session identifier
@@ -458,8 +533,8 @@ export const logProcessEvent = async (logData) => {
       errorMessage = null,
       errorCode = null,
       stackTrace = null,
-      dbSaveAttempted = false,
-      dbSaveSuccessful = false,
+      dbSaveAttempted = null,
+      dbSaveSuccessful = null,
       dbErrorMessage = null,
       startedAt = null,
       completedAt = null,
@@ -472,6 +547,7 @@ export const logProcessEvent = async (logData) => {
       throw new Error('sessionId, logType, and message are required for logging');
     }
 
+    // Clean and validate data before inserting
     const logRecord = {
       session_id: sessionId,
       batch_id: batchId,
@@ -485,7 +561,7 @@ export const logProcessEvent = async (logData) => {
       log_level: logLevel,
       log_type: logType,
       message: message,
-      details: details ? JSON.stringify(details) : null,
+      details: details ? (typeof details === 'string' ? details : JSON.stringify(details)) : null,
       processing_status: processingStatus,
       total_score: totalScore,
       processing_duration_ms: processingDurationMs,
@@ -496,12 +572,24 @@ export const logProcessEvent = async (logData) => {
       db_save_attempted: dbSaveAttempted,
       db_save_successful: dbSaveSuccessful,
       db_error_message: dbErrorMessage,
-      started_at: startedAt,
-      completed_at: completedAt,
+      started_at: startedAt ? new Date(startedAt).toISOString() : null,
+      completed_at: completedAt ? new Date(completedAt).toISOString() : null,
       component_name: componentName,
       ai_model: aiModel,
       environment: environment
     };
+
+    // Debug logging to see what's being inserted
+    console.log('Inserting log record:', {
+      session_id: logRecord.session_id,
+      log_type: logRecord.log_type,
+      message: logRecord.message,
+      email: logRecord.email,
+      batch_id: logRecord.batch_id,
+      processing_status: logRecord.processing_status,
+      db_save_attempted: logRecord.db_save_attempted,
+      db_save_successful: logRecord.db_save_successful
+    });
 
     const { data, error } = await supabase
       .from('process_logs')
@@ -510,12 +598,15 @@ export const logProcessEvent = async (logData) => {
 
     if (error) {
       console.error('Failed to insert process log:', error);
+      console.error('Log record that failed:', logRecord);
       return { data: null, error: error.message };
     }
 
+    console.log('Successfully inserted log:', data[0]?.id);
     return { data: data[0], error: null };
   } catch (err) {
     console.error('Error logging process event:', err);
+    console.error('Original log data:', logData);
     return { data: null, error: err.message };
   }
 };

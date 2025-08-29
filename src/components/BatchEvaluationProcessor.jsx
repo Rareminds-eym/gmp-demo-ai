@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AlertTriangle, BarChart, CheckCircle, Clock, Database, XCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import { hackathonData } from '../data/HackathonData';
-import { checkEvaluationExists, logProcessEvent, saveEvaluationError, saveEvaluationResults } from '../lib/databaseService';
+import { checkEvaluationExists, logProcessEvent, saveEvaluationError, saveEvaluationResults, testLogInsertion, debugProcessLogs } from '../lib/databaseService';
 
 const BatchEvaluationProcessor = ({ users, onComplete }) => {
   const [currentUserIndex, setCurrentUserIndex] = useState(0);
@@ -11,11 +10,42 @@ const BatchEvaluationProcessor = ({ users, onComplete }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('idle'); // idle, processing, complete, error
-
+  const [completedUsers, setCompletedUsers] = useState([]);
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [processedUsersCount, setProcessedUsersCount] = useState(0);
   const [sessionId, setSessionId] = useState(null); // Session ID for logging
   const BATCH_SIZE = 5;
+
+  // Load completed users from LocalStorage on component mount
+  useEffect(() => {
+    const savedUsers = localStorage.getItem('completed_users');
+    if (savedUsers) {
+      try {
+        setCompletedUsers(JSON.parse(savedUsers));
+      } catch (error) {
+        console.error('Error loading completed users from LocalStorage:', error);
+        setCompletedUsers([]);
+      }
+    }
+  }, []);
+
+  const saveUserToLocalStorage = (email, totalScore) => {
+    const userRecord = {
+      email,
+      totalScore,
+      finishedAt: new Date().toISOString()
+    };
+
+    const updatedCompletedUsers = [...completedUsers, userRecord];
+    setCompletedUsers(updatedCompletedUsers);
+    
+    try {
+      localStorage.setItem('completed_users', JSON.stringify(updatedCompletedUsers));
+      console.log(`Saved user ${email} with score ${totalScore} to LocalStorage`);
+    } catch (error) {
+      console.error('Error saving to LocalStorage:', error);
+    }
+  };
 
 
 
@@ -260,6 +290,8 @@ Return ONLY a valid JSON object with this structure:
               logType: 'DUPLICATE_CHECK_ERROR',
               message: `Error checking existing evaluation for ${user.email}`,
               errorMessage: existingCheck.error,
+              dbSaveAttempted: false, // No save attempted due to check error
+              dbSaveSuccessful: false,
               details: { checkError: existingCheck.error }
             });
           }
@@ -282,6 +314,8 @@ Return ONLY a valid JSON object with this structure:
               processingStatus: 'skipped',
               totalScore: existingCheck.data.total_score,
               processingDurationMs: processingDuration,
+              dbSaveAttempted: false, // No save attempted since already exists
+              dbSaveSuccessful: false, // No save needed
               details: {
                 reason: 'Already evaluated',
                 existingScore: existingCheck.data.total_score,
@@ -544,6 +578,16 @@ Return ONLY a valid JSON object with this structure:
     const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     setSessionId(newSessionId);
 
+    // Test log insertion first
+    console.log('Testing log insertion...');
+    const testResult = await testLogInsertion();
+    console.log('Test result:', testResult);
+    
+    // Debug existing logs
+    console.log('Debugging existing logs...');
+    const debugResult = await debugProcessLogs();
+    console.log('Debug result:', debugResult);
+
     // Log session start
     await logProcessEvent({
       sessionId: newSessionId,
@@ -633,12 +677,25 @@ Return ONLY a valid JSON object with this structure:
           </div>
 
           {!isProcessing && !isComplete && (
-            <button
-              onClick={startBatchProcessing}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-            >
-              Start Batch Evaluation
-            </button>
+            <div className="flex space-x-3">
+              <button
+                onClick={startBatchProcessing}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+              >
+                Start Batch Evaluation
+              </button>
+              <button
+                onClick={async () => {
+                  console.log('Testing database logging...');
+                  const testResult = await testLogInsertion();
+                  const debugResult = await debugProcessLogs();
+                  alert(`Test: ${testResult.success ? 'Success' : 'Failed: ' + testResult.error}`);
+                }}
+                className="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors text-sm"
+              >
+                Test Logging
+              </button>
+            </div>
           )}
         </div>
 
