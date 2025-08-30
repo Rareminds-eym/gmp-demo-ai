@@ -179,7 +179,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
 
       console.log(`Users to skip: ${completedEmails.length} (successful evaluations only)`);
 
-      const DESIRED_BATCH_SIZE = 20;
+      const DESIRED_BATCH_SIZE = 50;
       let uncompletedUsers = [];
       let currentStartId = Math.floor(currentOffset / 20) * 20 + 1; // Start from current batch position
       let searchAttempts = 0;
@@ -323,7 +323,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
             <Users className="h-8 w-8 text-purple-600" />
             <div>
               <h2 className="text-2xl font-bold text-gray-900">Smart Batch Processing</h2>
-              <p className="text-gray-600">Finds 20 users who need evaluation</p>
+              <p className="text-gray-600">Finds 50 users who need evaluation</p>
             </div>
           </div>
 
@@ -365,7 +365,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
             >
               <BarChart className="h-5 w-5" />
               <span>
-                {loadingBatch ? 'Finding Users...' : 'Find 20 Users for Evaluation'}
+                {loadingBatch ? 'Finding Users...' : 'Find 50 Users for Evaluation'}
               </span>
             </button>
           )}
@@ -378,7 +378,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
             >
               <BarChart className="h-5 w-5" />
               <span>
-                {loadingBatch ? 'Loading Next Users...' : 'Load Next 20 Users'}
+                {loadingBatch ? 'Loading Next Users...' : 'Load Next 50 Users'}
               </span>
             </button>
           )}

@@ -14,7 +14,7 @@ const BatchEvaluationProcessor = ({ users, onComplete }) => {
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [processedUsersCount, setProcessedUsersCount] = useState(0);
   const [sessionId, setSessionId] = useState(null); // Session ID for logging
-  const BATCH_SIZE = 20;
+  const BATCH_SIZE = 50;
 
   // Load completed users from LocalStorage on component mount
   useEffect(() => {
