@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { getSupabaseClient } from '../lib/supabase';
+import { getDatabaseService } from '../lib/databaseServiceSelector';
 import { Search, User, Calendar, AlertCircle, Users, BarChart, ChevronDown } from 'lucide-react';
 import BatchEvaluationProcessor from './BatchEvaluationProcessor';
 
@@ -31,6 +32,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
     setError(null);
 
     try {
+      const supabase = getSupabaseClient(selectedDropdownItem);
       const { data, error } = await supabase
         .from('level2_screen3_progress')
         .select(`
@@ -89,7 +91,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedDropdownItem]);
 
   // Debounce search input
   useEffect(() => {
@@ -122,6 +124,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
   const getEvaluationStatusSummary = async () => {
     try {
       // Get detailed evaluation status information for better logging
+      const supabase = getSupabaseClient(selectedDropdownItem);
       const { data, error } = await supabase
         .from('evaluation_results')
         .select('email, evaluation_status');
@@ -149,6 +152,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
     try {
       // Query evaluation_results table to get emails that already have successful evaluations
       // Users with 'error' status should be re-processed, so only exclude 'success' status
+      const supabase = getSupabaseClient(selectedDropdownItem);
       const { data, error } = await supabase
         .from('evaluation_results')
         .select('email')
@@ -195,6 +199,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
         console.log(`Search attempt ${searchAttempts + 1}: Checking start_id range ${batchStartId}-${batchEndId}`);
 
         // Load users from current range
+        const supabase = getSupabaseClient(selectedDropdownItem);
         const { data, error } = await supabase
           .from('level2_screen3_progress')
           .select(`
@@ -402,9 +407,10 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
       {/* Batch Evaluation Processor */}
       {showBatchProcessor && (
         <div className="mb-8">
-          <BatchEvaluationProcessor 
-            users={batchUsers} 
+          <BatchEvaluationProcessor
+            users={batchUsers}
             onComplete={handleBatchComplete}
+            environment={selectedDropdownItem}
           />
         </div>
       )}

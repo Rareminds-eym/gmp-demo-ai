@@ -2,9 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AlertTriangle, BarChart, CheckCircle, Clock, Database, XCircle } from 'lucide-react';
 import { hackathonData } from '../data/HackathonData';
-import { checkEvaluationExists, logProcessEvent, saveEvaluationError, saveEvaluationResults, updateEvaluationResults, testLogInsertion, debugProcessLogs, getEmailProcessingSummary, getEmailActivityTimeline, getBatchEmailSummaries, getProcessedEmails } from '../lib/databaseService';
+import { getDatabaseService } from '../lib/databaseServiceSelector';
 
-const BatchEvaluationProcessor = ({ users, onComplete }) => {
+const BatchEvaluationProcessor = ({ users, onComplete, environment = 'GMP' }) => {
+  // Get the appropriate database service based on environment
+  const databaseService = getDatabaseService(environment);
+
   const [currentUserIndex, setCurrentUserIndex] = useState(0);
   const [evaluationResults, setEvaluationResults] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -261,7 +264,7 @@ Return ONLY a valid JSON object with this structure:
 
     // Log batch start
     if (sessionId) {
-      await logProcessEvent({
+      await databaseService.logProcessEvent({
         sessionId,
         batchId,
         batchNumber: currentBatchIndex + 1,
@@ -288,7 +291,7 @@ Return ONLY a valid JSON object with this structure:
 
       // Log user processing start
       if (sessionId) {
-        await logProcessEvent({
+        await databaseService.logProcessEvent({
           sessionId,
           batchId,
           batchNumber: currentBatchIndex + 1,
@@ -313,14 +316,14 @@ Return ONLY a valid JSON object with this structure:
         console.log(`Processing user ${globalIndex + 1}/${users.length}: ${user.email} (Batch ${currentBatchIndex + 1}, User ${i + 1}/${currentBatch.length})`);
 
         // Check if evaluation already exists for this email
-        const existingCheck = await checkEvaluationExists(user.email);
+        const existingCheck = await databaseService.checkEvaluationExists(user.email);
         
         if (existingCheck.error) {
           console.warn(`Error checking existing evaluation for ${user.email}:`, existingCheck.error);
           
           // Log warning
           if (sessionId) {
-            await logProcessEvent({
+            await databaseService.logProcessEvent({
               sessionId,
               batchId,
               email: user.email,
@@ -341,7 +344,7 @@ Return ONLY a valid JSON object with this structure:
           
           // Log user skip
           if (sessionId) {
-            await logProcessEvent({
+            await databaseService.logProcessEvent({
               sessionId,
               batchId,
               email: user.email,
@@ -390,7 +393,7 @@ Return ONLY a valid JSON object with this structure:
           
           // Log that we're updating
           if (sessionId) {
-            await logProcessEvent({
+            await databaseService.logProcessEvent({
               sessionId,
               batchId,
               email: user.email,
@@ -427,7 +430,7 @@ Return ONLY a valid JSON object with this structure:
           if (isUpdate) {
             // Update existing record
             console.log(`   Updating existing record ID: ${existingCheck.data.id}`);
-            dbResult = await updateEvaluationResults(existingCheck.data.id, {
+            dbResult = await databaseService.updateEvaluationResults(user.email, {
               email: user.email,
               user_id: user.user_id,
               case_id: user.case_id || user.selected_case_id,
@@ -445,7 +448,7 @@ Return ONLY a valid JSON object with this structure:
           } else {
             // Insert new record
             console.log(`   Inserting new record for ${user.email}`);
-            dbResult = await saveEvaluationResults({
+            dbResult = await databaseService.saveEvaluationResults({
               email: user.email,
               user_id: user.user_id,
               case_id: user.case_id || user.selected_case_id,
@@ -481,7 +484,7 @@ Return ONLY a valid JSON object with this structure:
 
         // Log successful user processing
         if (sessionId) {
-          await logProcessEvent({
+          await databaseService.logProcessEvent({
             sessionId,
             batchId,
             email: user.email,
@@ -546,13 +549,10 @@ Return ONLY a valid JSON object with this structure:
         let dbSaveSuccessful = false;
         let dbErrorMessage = null;
         try {
-          const dbResult = await saveEvaluationError({
-            email: user.email,
-            user_id: user.user_id,
-            case_id: user.case_id || user.selected_case_id,
-            error_message: error.message,
-            batchId: batchId
-          });
+          const dbResult = await databaseService.saveEvaluationError(
+            user.email,
+            error.message
+          );
           
           if (dbResult.error) {
             console.error(`Database error save failed for ${user.email}:`, dbResult.error);
@@ -568,7 +568,7 @@ Return ONLY a valid JSON object with this structure:
 
         // Log user error
         if (sessionId) {
-          await logProcessEvent({
+          await databaseService.logProcessEvent({
             sessionId,
             batchId,
             email: user.email,
@@ -657,7 +657,7 @@ Return ONLY a valid JSON object with this structure:
       // Get emails from current batch for logging
       const batchEmails = currentBatch.map(u => u.email).join(', ');
 
-      await logProcessEvent({
+      await databaseService.logProcessEvent({
         sessionId,
         batchId,
         batchNumber: currentBatchIndex + 1,
@@ -718,7 +718,7 @@ Return ONLY a valid JSON object with this structure:
       // Get all processed emails for logging
       const allProcessedEmails = evaluationResults.map(r => r.email).join(', ');
 
-      await logProcessEvent({
+      await databaseService.logProcessEvent({
         sessionId,
         logLevel: 'INFO',
         logType: 'SESSION_COMPLETE',
@@ -756,16 +756,16 @@ Return ONLY a valid JSON object with this structure:
 
     // Test log insertion first
     console.log('Testing log insertion...');
-    const testResult = await testLogInsertion();
-    console.log('Test result:', testResult);
-    
+    // const testResult = await testLogInsertion();
+    // console.log('Test result:', testResult);
+
     // Debug existing logs
     console.log('Debugging existing logs...');
-    const debugResult = await debugProcessLogs();
-    console.log('Debug result:', debugResult);
+    // const debugResult = await debugProcessLogs();
+    // console.log('Debug result:', debugResult);
 
     // Log session start
-    await logProcessEvent({
+    await databaseService.logProcessEvent({
       sessionId: newSessionId,
       logLevel: 'INFO',
       logType: 'SESSION_START',
@@ -867,28 +867,28 @@ Return ONLY a valid JSON object with this structure:
                   console.log('Testing database logging and email queries...');
                   
                   // Test basic logging
-                  const testResult = await testLogInsertion();
-                  const debugResult = await debugProcessLogs();
-                  
+                  // const testResult = await testLogInsertion();
+                  // const debugResult = await debugProcessLogs();
+
                   // Test email-focused queries
                   console.log('Testing email processing summary...');
-                  const emailSummary = await getEmailProcessingSummary();
-                  console.log('Email processing summary:', emailSummary);
-                  
+                  // const emailSummary = await getEmailProcessingSummary();
+                  // console.log('Email processing summary:', emailSummary);
+
                   console.log('Testing batch email summaries...');
-                  const batchEmailSummary = await getBatchEmailSummaries();
-                  console.log('Batch email summaries:', batchEmailSummary);
-                  
+                  // const batchEmailSummary = await getBatchEmailSummaries();
+                  // console.log('Batch email summaries:', batchEmailSummary);
+
                   console.log('Testing processed emails...');
-                  const processedEmails = await getProcessedEmails({ limit: 10 });
+                  const processedEmails = await databaseService.getProcessedEmails();
                   console.log('Recent processed emails:', processedEmails);
-                  
+
                   // Test specific email timeline if we have emails
                   if (processedEmails.data && processedEmails.data.length > 0) {
                     const testEmail = processedEmails.data[0].email;
                     console.log(`Testing activity timeline for ${testEmail}...`);
-                    const timeline = await getEmailActivityTimeline(testEmail);
-                    console.log('Email timeline:', timeline);
+                    // const timeline = await getEmailActivityTimeline(testEmail);
+                    // console.log('Email timeline:', timeline);
                   }
                   
                   alert(`Test: ${testResult.success ? 'Success' : 'Failed: ' + testResult.error}\nCheck console for detailed email query results`);
