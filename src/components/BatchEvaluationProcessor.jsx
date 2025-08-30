@@ -14,7 +14,7 @@ const BatchEvaluationProcessor = ({ users, onComplete }) => {
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [processedUsersCount, setProcessedUsersCount] = useState(0);
   const [sessionId, setSessionId] = useState(null); // Session ID for logging
-  const BATCH_SIZE = 5;
+  const BATCH_SIZE = 20;
 
   // Load completed users from LocalStorage on component mount
   useEffect(() => {
@@ -682,13 +682,27 @@ Return ONLY a valid JSON object with this structure:
       });
     }
 
-    setIsProcessing(false);
+    console.log(`Batch ${currentBatchIndex + 1} completed! Processed ${currentBatch.length} users.`);
 
-    // Current batch completed
+    // Check if there are more batches to process
+    if (hasMoreBatches()) {
+      console.log(`Moving to next batch: ${currentBatchIndex + 2}/${Math.ceil(users.length / BATCH_SIZE)}`);
+      setCurrentBatchIndex(prev => prev + 1);
+
+      // Small delay before next batch
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Process next batch
+      await processCurrentBatch();
+      return; // Exit here to avoid setting complete status
+    }
+
+    // All batches completed
+    setIsProcessing(false);
     setProcessingStatus('complete');
     setIsComplete(true);
 
-    console.log(`Batch ${currentBatchIndex + 1} completed! Processed ${currentBatch.length} users.`);
+    console.log(`All batches completed! Processed ${users.length} users total.`);
 
     // Log session completion
     if (sessionId) {
