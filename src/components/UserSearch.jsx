@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { Search, User, Calendar, AlertCircle, Users, BarChart, ChevronDown } from 'lucide-react';
+import { Search, User, Calendar, AlertCircle, Users, BarChart, ChevronDown, Database } from 'lucide-react';
 import BatchEvaluationProcessor from './BatchEvaluationProcessor';
+import { fetchStageData } from '../lib/databaseService';
 
 const UserSearch = ({ onUserSelect, selectedUser }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -167,6 +168,114 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
     }
   };
 
+  const loadAllUsers = async () => {
+    setLoadingBatch(true);
+    setError(null);
+    setBatchComplete(false);
+
+    try {
+      console.log('Loading all users who need evaluation from database...');
+      
+      // First, get all users from level2_screen3_progress
+      const { data: allUsers, error: usersError } = await supabase
+        .from('level2_screen3_progress')
+        .select(`
+          id,
+          user_id,
+          email,
+          start_id,
+          case_id,
+          selected_case_id,
+          current_stage,
+          progress_percentage,
+          is_completed,
+          created_at,
+          updated_at,
+          idea_statement,
+          stage2_problem,
+          stage3_technology,
+          stage4_collaboration,
+          stage5_creativity,
+          stage6_speed_scale,
+          stage7_impact,
+          stage8_final_problem,
+          stage8_final_technology,
+          stage8_final_collaboration,
+          stage8_final_creativity,
+          stage8_final_speed_scale,
+          stage8_final_impact,
+          stage10_reflection
+        `)
+        .order('updated_at', { ascending: false });
+
+      if (usersError) {
+        console.error('Failed to fetch users:', usersError);
+        throw new Error(usersError.message);
+      }
+
+      if (!allUsers || allUsers.length === 0) {
+        setError('No users found in the database.');
+        return;
+      }
+
+      console.log(`Found ${allUsers.length} total users in database`);
+
+      // Then, get all emails with successful evaluations
+      const { data: successfulEvaluations, error: evalError } = await supabase
+        .from('evaluation_results')
+        .select('email')
+        .eq('evaluation_status', 'success');
+
+      if (evalError) {
+        console.warn('Warning: Failed to fetch evaluation status:', evalError.message);
+        // Continue processing even if we can't check evaluation status
+      }
+
+      const completedEmails = (successfulEvaluations || []).map(record => record.email);
+      console.log(`Users with successful evaluations to skip: ${completedEmails.length}`);
+
+      // Filter out users who already have successful evaluations
+      const usersNeedingEvaluation = allUsers.filter(user => {
+        const hasSuccessfulEvaluation = completedEmails.includes(user.email);
+        
+        if (hasSuccessfulEvaluation) {
+          console.log(`Skipping ${user.email} - already has successful evaluation`);
+          return false;
+        } else {
+          console.log(`Including ${user.email} - needs evaluation`);
+          return true;
+        }
+      });
+
+      console.log(`Final result: ${usersNeedingEvaluation.length} users need evaluation out of ${allUsers.length} total users`);
+
+      if (usersNeedingEvaluation.length === 0) {
+        setError(`All ${allUsers.length} users in the database already have successful evaluations.`);
+        return;
+      }
+
+      setBatchUsers(usersNeedingEvaluation);
+      setShowBatchProcessor(true);
+      setBatchComplete(false);
+
+    } catch (err) {
+      console.error('Error loading all users:', err);
+      let errorMessage = 'Failed to load all users for batch processing. ';
+
+      if (err.code === 'PGRST301') {
+        errorMessage += 'Table not found or no access permissions.';
+      } else if (err.message.includes('JWT')) {
+        errorMessage += 'Authentication failed. Check your Supabase credentials.';
+      } else {
+        errorMessage += err.message;
+      }
+
+      setError(errorMessage);
+    } finally {
+      setLoadingBatch(false);
+    }
+  };
+
   const loadBatchUsers = async (isNextBatch = false) => {
     setLoadingBatch(true);
     setError(null);
@@ -323,7 +432,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
             <Users className="h-8 w-8 text-purple-600" />
             <div>
               <h2 className="text-2xl font-bold text-gray-900">Smart Batch Processing</h2>
-              <p className="text-gray-600">Finds 50 users who need evaluation</p>
+              <p className="text-gray-600">Find users who need evaluation - 50 at a time or all users</p>
             </div>
           </div>
 
@@ -358,16 +467,29 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
           </div>
           
           {!showBatchProcessor && (
-            <button
-              onClick={() => loadBatchUsers(false)}
-              disabled={loadingBatch}
-              className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-            >
-              <BarChart className="h-5 w-5" />
-              <span>
-                {loadingBatch ? 'Finding Users...' : 'Find 50 Users for Evaluation'}
-              </span>
-            </button>
+            <div className="flex space-x-3">
+              <button
+                onClick={() => loadBatchUsers(false)}
+                disabled={loadingBatch}
+                className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+              >
+                <BarChart className="h-5 w-5" />
+                <span>
+                  {loadingBatch ? 'Finding Users...' : 'Find 50 Users for Evaluation'}
+                </span>
+              </button>
+              
+              <button
+                onClick={loadAllUsers}
+                disabled={loadingBatch}
+                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+              >
+                <Database className="h-5 w-5" />
+                <span>
+                  {loadingBatch ? 'Loading All Users...' : 'Get All Users for Evaluation'}
+                </span>
+              </button>
+            </div>
           )}
 
           {showBatchProcessor && batchComplete && (
