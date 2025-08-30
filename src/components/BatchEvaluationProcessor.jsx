@@ -14,7 +14,10 @@ const BatchEvaluationProcessor = ({ users, onComplete }) => {
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [processedUsersCount, setProcessedUsersCount] = useState(0);
   const [sessionId, setSessionId] = useState(null); // Session ID for logging
+  const [processingTimestamps, setProcessingTimestamps] = useState([]); // Rate limiting timestamps
   const BATCH_SIZE = 50;
+  const MAX_PROCESSING_PER_MINUTE = 55;
+  const MINUTE_IN_MS = 60 * 1000;
 
   // Load completed users from LocalStorage on component mount
   useEffect(() => {
@@ -45,6 +48,46 @@ const BatchEvaluationProcessor = ({ users, onComplete }) => {
     } catch (error) {
       console.error('Error saving to LocalStorage:', error);
     }
+  };
+
+  // Rate limiting function to ensure max 55 processing per minute
+  const calculateRateLimitDelay = () => {
+    const now = Date.now();
+    
+    // Clean up timestamps older than 1 minute
+    const recentTimestamps = processingTimestamps.filter(timestamp => 
+      now - timestamp < MINUTE_IN_MS
+    );
+    
+    // Update the timestamps state
+    setProcessingTimestamps(recentTimestamps);
+    
+    // If we haven't reached the limit, no delay needed
+    if (recentTimestamps.length < MAX_PROCESSING_PER_MINUTE) {
+      return 0;
+    }
+    
+    // If we're at the limit, calculate delay until the oldest timestamp is 1 minute old
+    const oldestTimestamp = Math.min(...recentTimestamps);
+    const delayNeeded = MINUTE_IN_MS - (now - oldestTimestamp);
+    
+    console.log(`🕒 Rate limit reached (${recentTimestamps.length}/${MAX_PROCESSING_PER_MINUTE}). Delaying ${Math.ceil(delayNeeded / 1000)}s`);
+    
+    return Math.max(0, delayNeeded + 100); // Add 100ms buffer
+  };
+
+  // Add timestamp and apply rate limiting
+  const addProcessingTimestamp = async () => {
+    const delay = calculateRateLimitDelay();
+    
+    if (delay > 0) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+    
+    const timestamp = Date.now();
+    setProcessingTimestamps(prev => [...prev, timestamp]);
+    
+    return timestamp;
   };
 
 
@@ -312,6 +355,9 @@ Return ONLY a valid JSON object with this structure:
       try {
         console.log(`Processing user ${globalIndex + 1}/${users.length}: ${user.email} (Batch ${currentBatchIndex + 1}, User ${i + 1}/${currentBatch.length})`);
 
+        // Apply rate limiting before checking existing evaluation
+        await addProcessingTimestamp();
+
         // Check if evaluation already exists for this email
         const existingCheck = await checkEvaluationExists(user.email);
         
@@ -377,11 +423,6 @@ Return ONLY a valid JSON object with this structure:
 
           setEvaluationResults(prev => [...prev, userResult]);
           setProcessedUsersCount(prev => prev + 1);
-          
-          // Small delay before next user
-          if (i < currentBatch.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
           
           continue; // Skip to next user
         } else if (existingCheck.exists && existingCheck.needsUpdate) {
@@ -533,11 +574,6 @@ Return ONLY a valid JSON object with this structure:
         setProcessedUsersCount(prev => prev + 1);
 
         console.log(`Successfully ${isUpdate ? 'updated' : 'processed'} ${user.email} with score ${evaluationResult.totalScore}`);
-
-        // Small delay between users to prevent rate limiting
-        if (i < currentBatch.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
       } catch (error) {
         const processingDuration = Date.now() - userStartTime;
         console.error(`Failed to process user ${user.email}:`, error);
@@ -846,6 +882,9 @@ Return ONLY a valid JSON object with this structure:
                 Processing current batch of {users.length} users
                 {processedUsersCount > 0 && ` (${processedUsersCount}/${users.length} completed)`}
               </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Rate limited to {MAX_PROCESSING_PER_MINUTE} evaluations per minute
+              </p>
               {isProcessing && (
                 <p className="text-sm text-blue-600">
                   Processing batch of {users.length} users...
@@ -931,6 +970,9 @@ Return ONLY a valid JSON object with this structure:
                 <div>Currently processing: {users[currentUserIndex]?.email}</div>
                 <div className="text-sm text-blue-700">
                   User {currentUserIndex + 1} of {users.length} in current batch
+                </div>
+                <div className="text-xs text-blue-600 mt-1">
+                  Rate limit: {processingTimestamps.filter(t => Date.now() - t < MINUTE_IN_MS).length}/{MAX_PROCESSING_PER_MINUTE} per minute
                 </div>
               </div>
             </div>
