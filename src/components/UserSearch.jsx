@@ -179,9 +179,9 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
 
       console.log(`Users to skip: ${completedEmails.length} (successful evaluations only)`);
 
-      const DESIRED_BATCH_SIZE = 5;
+      const DESIRED_BATCH_SIZE = 20;
       let uncompletedUsers = [];
-      let currentStartId = Math.floor(currentOffset / 5) * 5 + 1; // Start from current batch position
+      let currentStartId = Math.floor(currentOffset / 20) * 20 + 1; // Start from current batch position
       let searchAttempts = 0;
       const MAX_SEARCH_ATTEMPTS = 20; // Prevent infinite loops
 
@@ -189,8 +189,8 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
 
       // Keep fetching users until we have enough uncompleted ones or reach max attempts
       while (uncompletedUsers.length < DESIRED_BATCH_SIZE && searchAttempts < MAX_SEARCH_ATTEMPTS) {
-        const batchStartId = currentStartId + (searchAttempts * 5);
-        const batchEndId = batchStartId + 4;
+        const batchStartId = currentStartId + (searchAttempts * 20);
+        const batchEndId = batchStartId + 19;
 
         console.log(`Search attempt ${searchAttempts + 1}: Checking start_id range ${batchStartId}-${batchEndId}`);
 
@@ -280,7 +280,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
       setBatchComplete(false); // Reset batch completion status
 
       // Update offset for next batch - move forward by the number of ranges we searched
-      setCurrentOffset(prev => prev + (searchAttempts * 5));
+      setCurrentOffset(prev => prev + (searchAttempts * 20));
 
     } catch (err) {
       console.error('Error loading batch users:', err);
@@ -323,7 +323,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
             <Users className="h-8 w-8 text-purple-600" />
             <div>
               <h2 className="text-2xl font-bold text-gray-900">Smart Batch Processing</h2>
-              <p className="text-gray-600">Finds 5 users who need evaluation</p>
+              <p className="text-gray-600">Finds 20 users who need evaluation</p>
             </div>
           </div>
 
@@ -365,7 +365,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
             >
               <BarChart className="h-5 w-5" />
               <span>
-                {loadingBatch ? 'Finding Users...' : 'Find 5 Users for Evaluation'}
+                {loadingBatch ? 'Finding Users...' : 'Find 20 Users for Evaluation'}
               </span>
             </button>
           )}
@@ -378,7 +378,7 @@ const UserSearch = ({ onUserSelect, selectedUser }) => {
             >
               <BarChart className="h-5 w-5" />
               <span>
-                {loadingBatch ? 'Loading Next Users...' : 'Load Next 5 Users'}
+                {loadingBatch ? 'Loading Next Users...' : 'Load Next 20 Users'}
               </span>
             </button>
           )}
