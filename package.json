@@ -13,6 +13,7 @@
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.56.0",
     "lucide-react": "^0.344.0",
+    "pdfjs-dist": "^5.4.149",
     "prop-types": "^15.8.1",
     "prototypes": "^3.0.3",
     "react": "^18.3.1",

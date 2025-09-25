@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import UserSearch from './components/UserSearch';
 import CaseQuestions from './components/CaseQuestions';
-
+import GoogleDrivePDFEvaluator from './components/GoogleDrivePDFEvaluator';
 
 function App() {
   const [selectedUser, setSelectedUser] = useState(null);
@@ -22,8 +22,9 @@ function App() {
           </p>
         </div>
 
+        {/* Google Drive PDF Evaluator Section */}
+        <GoogleDrivePDFEvaluator />
 
-       
         <div className="max-w-6xl mx-auto">
          
           <UserSearch 
