@@ -121,9 +121,8 @@ const GoogleDrivePDFEvaluator = () => {
   // Function to fetch files from a specific Google Drive folder
   const fetchFilesFromFolder = async (token) => {
     try {
-      // The folder ID from your URL: https://drive.google.com/drive/folders/1IsUJV36Mi4WBJUjzOkK_bWqC79LQY7AiKLluNpOYnpo7ALlltXRs8y0sYarDbUn3WMA70LuI
-      // The actual folder ID is: 1IsUJV36Mi4WBJUjzOkK_bWqC79LQY7Ai
-      const folderId = '1IsUJV36Mi4WBJUjzOkK_bWqC79LQY7Ai';
+      // Using the complete folder ID from the provided URL
+      const folderId = '1IsUJV36Mi4WBJUjzOkK_bWqC79LQY7AiKLluNpOYnpo7ALlltXRs8y0sYarDbUn3WMA70LuI';
       
       const response = await fetch(
         `https://www.googleapis.com/drive/v3/files?q='${folderId}' in parents and mimeType = 'application/pdf'&fields=files(id,name,mimeType)&key=${import.meta.env.VITE_GOOGLE_DRIVE_API_KEY}`,
