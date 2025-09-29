@@ -420,34 +420,52 @@ Return ONLY a valid JSON object with this structure:
             </div>
             
             {driveFiles.length > 0 ? (
-              <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
-                {driveFiles.map((file) => (
-                  <div 
-                    key={file.id} 
-                    className={`p-3 flex items-center cursor-pointer hover:bg-gray-50 ${
-                      selectedFiles.some(f => f.id === file.id) ? 'bg-blue-50' : ''
-                    }`}
-                    onClick={() => toggleFileSelection(file)}
+              <>
+                <div className="mb-2 flex justify-end">
+                  <button
+                    onClick={() => {
+                      if (selectedFiles.length === driveFiles.length) {
+                        // If all files are selected, deselect all
+                        setSelectedFiles([]);
+                      } else {
+                        // Otherwise, select all files
+                        setSelectedFiles([...driveFiles]);
+                      }
+                    }}
+                    className="text-sm text-blue-600 hover:text-blue-800"
                   >
-                    <div className="flex items-center flex-1">
-                      <FileText className="text-red-500 mr-3" />
-                      <span className="text-sm">{file.name}</span>
+                    {selectedFiles.length === driveFiles.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                </div>
+                <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
+                  {driveFiles.map((file) => (
+                    <div 
+                      key={file.id} 
+                      className={`p-3 flex items-center cursor-pointer hover:bg-gray-50 ${
+                        selectedFiles.some(f => f.id === file.id) ? 'bg-blue-50' : ''
+                      }`}
+                      onClick={() => toggleFileSelection(file)}
+                    >
+                      <div className="flex items-center flex-1">
+                        <FileText className="text-red-500 mr-3" />
+                        <span className="text-sm">{file.name}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 mr-3">
+                        PDF
+                      </div>
+                      <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${
+                        selectedFiles.some(f => f.id === file.id) 
+                          ? 'bg-blue-600 border-blue-600' 
+                          : 'border-gray-300'
+                      }`}>
+                        {selectedFiles.some(f => f.id === file.id) && (
+                          <CheckCircle className="text-white" size={16} />
+                        )}
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500 mr-3">
-                      PDF
-                    </div>
-                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${
-                      selectedFiles.some(f => f.id === file.id) 
-                        ? 'bg-blue-600 border-blue-600' 
-                        : 'border-gray-300'
-                    }`}>
-                      {selectedFiles.some(f => f.id === file.id) && (
-                        <CheckCircle className="text-white" size={16} />
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </>
             ) : (
               <div className="text-center py-4 text-gray-500">
                 No PDF files found in your Google Drive folder
