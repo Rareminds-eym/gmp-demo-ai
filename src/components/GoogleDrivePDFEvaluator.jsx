@@ -22,6 +22,9 @@ const GoogleDrivePDFEvaluator = () => {
   const [currentPage, setCurrentPage] = useState(1);
   // Store page tokens for navigation
   const [pageTokens, setPageTokens] = useState([]);
+  // Total file count
+  const [totalFileCount, setTotalFileCount] = useState(0);
+  const [countingFiles, setCountingFiles] = useState(false);
 
   // Function to load the Google Identity Services script
   const loadGoogleScript = () => {
@@ -114,9 +117,13 @@ const GoogleDrivePDFEvaluator = () => {
           setPageTokens([]);
           setCurrentPage(1);
           setNextPageToken(null);
+          setTotalFileCount(0);
           
           // Fetch first page of files from the specific folder
           fetchFilesFromFolder(response.access_token);
+          
+          // Count total files in background
+          countTotalFiles(response.access_token);
         },
       });
       
@@ -169,6 +176,56 @@ const GoogleDrivePDFEvaluator = () => {
     }
   };
 
+  // Function to count total files in the folder
+  const countTotalFiles = async (token) => {
+    setCountingFiles(true);
+    setProcessingStatus('Counting total files...');
+    
+    try {
+      // Using the complete folder ID from the provided URL
+      const folderId = '1IsUJV36Mi4WBJUjzOkK_bWqC79LQY7AiKLluNpOYnpo7ALlltXRs8y0sYarDbUn3WMA70LuI';
+      
+      let totalFiles = 0;
+      let pageToken = null;
+      
+      do {
+        // Build query with pagination
+        let query = `q='${folderId}' in parents and mimeType = 'application/pdf'&fields=files(id,name,mimeType),nextPageToken&pageSize=100`;
+        if (pageToken) {
+          query += `&pageToken=${pageToken}`;
+        }
+        
+        const response = await fetch(
+          `https://www.googleapis.com/drive/v3/files?${query}&key=${import.meta.env.VITE_GOOGLE_DRIVE_API_KEY}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        );
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch files: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        totalFiles += data.files ? data.files.length : 0;
+        pageToken = data.nextPageToken || null;
+        
+        // Update status to show progress
+        setProcessingStatus(`Counting total files... ${totalFiles} found so far`);
+      } while (pageToken);
+      
+      setTotalFileCount(totalFiles);
+      setCountingFiles(false);
+      setProcessingStatus('');
+    } catch (error) {
+      setConnectionError(`Failed to count total files: ${error.message}`);
+      setCountingFiles(false);
+      setProcessingStatus('');
+    }
+  };
+
   // Function to load next page of files
   const loadNextPage = () => {
     if (hasMoreFiles && nextPageToken && accessToken) {
@@ -211,6 +268,7 @@ const GoogleDrivePDFEvaluator = () => {
     setHasMoreFiles(true);
     setCurrentPage(1);
     setPageTokens([]);
+    setTotalFileCount(0);
   };
 
   // Function to select files
@@ -471,8 +529,24 @@ Return ONLY a valid JSON object with this structure:
         {isConnected && (
           <div className="border border-gray-200 rounded-lg p-4">
             <div className="flex justify-between items-center mb-3">
-              <h3 className="font-semibold text-lg">Select PDF Files (Page {currentPage})</h3>
+              <h3 className="font-semibold text-lg">Select PDF Files</h3>
               <span className="text-sm text-gray-500">{selectedFiles.length} selected</span>
+            </div>
+            
+            {/* Total file count and page info */}
+            <div className="mb-3 flex justify-between items-center text-sm text-gray-600">
+              <div>
+                {totalFileCount > 0 ? (
+                  <span>Total files: {totalFileCount}</span>
+                ) : countingFiles ? (
+                  <span>Counting files...</span>
+                ) : (
+                  <span>Calculating total files...</span>
+                )}
+              </div>
+              <div>
+                Page {currentPage} of {Math.ceil(totalFileCount / 100) || 1}
+              </div>
             </div>
             
             {/* Loading Animation */}
@@ -554,7 +628,7 @@ Return ONLY a valid JSON object with this structure:
                   ))}
                 </div>
                 <div className="mt-2 text-sm text-gray-500 text-right">
-                  Showing {driveFiles.length} files on page {currentPage}
+                  Showing {driveFiles.length} files on page {currentPage} of {Math.ceil(totalFileCount / 100) || 1}
                 </div>
               </>
             ) : !isProcessing && driveFiles.length === 0 ? (
