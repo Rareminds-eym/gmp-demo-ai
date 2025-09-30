@@ -340,52 +340,103 @@ const GoogleDrivePDFEvaluator = () => {
 
       // Build the evaluation prompt
       const prompt = `
-You are an evaluator for a pharmaceutical innovation hackathon using LAZY EVALUATION principles.
+You are an experienced college professor evaluating a Food Safety and Quality Management project report. Analyze the provided PDF document according to the following rubric with a total of 30 marks:
 
-**LAZY EVALUATION GUIDELINES:**
-- IGNORE spelling and grammar mistakes completely
-- Focus on IDEAS and INTENT rather than perfect writing
-- Give benefit of the doubt when meaning is unclear but effort is shown
-- Be generous with partial credit for incomplete but meaningful responses
-- Value creativity and innovation over technical writing skills
-- If a response shows understanding but is poorly written, still give credit
+## EVALUATION RUBRIC
 
-**STUDENT'S PDF CONTENT:**
-Analyze the entire PDF document provided. Extract and evaluate the content from all sections.
+### 1. Report Completeness & Structure (10 marks)
+Assess whether the report includes ALL required sections:
+- Introduction (with clear background, objectives, and scope)
+- Methodology (detailed approach, tools, and procedures used)
+- Findings (comprehensive results and observations)
+- Conclusion (summary, implications, and recommendations)
+- References (properly cited sources)
 
-**EVALUATION FOCUS:**
-- CONTENT and IDEAS are what matter
-- IGNORE all spelling, grammar, and language errors
-- REWARD effort and understanding over perfect presentation
-- Be GENEROUS with partial credit
-- Look for the INTENT behind poorly written responses
+Award marks based on:
+- 9-10 marks: All sections present, well-organized, logical flow, excellent structure
+- 7-8 marks: All sections present, good organization, minor structural issues
+- 5-6 marks: Most sections present, adequate organization, some gaps
+- 3-4 marks: Several sections missing or poorly organized
+- 0-2 marks: Incomplete report, major sections missing
 
-**Output Format Required:**
-For each section:
-Section Name
-Score: (0 / half weight / full weight)
-Justification (focus on content quality, mention ignoring language issues)
+### 2. Depth of Analysis (10 marks)
+Evaluate the student's understanding and analytical capabilities:
+- Demonstrates clear understanding of FSQM (Food Safety & Quality Management) concepts
+- Provides analytical insights beyond superficial observations
+- Shows pattern recognition and critical thinking
+- Connects theory to practical applications
+- Relevance to FSQM principles (HACCP, GMP, quality control, food safety standards)
 
-At the end:
-Total Score (out of 70)
-Overall Feedback (2–3 sentences on content strengths and idea development, ignore writing quality).
+Award marks based on:
+- 9-10 marks: Exceptional analysis, deep insights, excellent FSQM application, sophisticated pattern recognition
+- 7-8 marks: Strong analysis, good insights, clear FSQM relevance, identifies key patterns
+- 5-6 marks: Adequate analysis, basic insights, some FSQM connection, limited patterns
+- 3-4 marks: Superficial analysis, weak insights, minimal FSQM relevance
+- 0-2 marks: No meaningful analysis, lacks understanding
 
-Return ONLY a valid JSON object with this structure:
-{
-  "totalScore": <integer 0-70>,
-  "stageScores": {
-    "idea": {"score": <integer 0-10>, "status": "exemplar|average|weak", "feedback": "justification focusing on ideas not writing"},
-    "problem": {"score": <integer 0-10>, "status": "exemplar|average|weak", "feedback": "justification focusing on understanding not grammar"},
-    "technology": {"score": <integer 0-10>, "status": "exemplar|average|weak", "feedback": "justification focusing on tech concepts not spelling"},
-    "collaboration": {"score": <integer 0-10>, "status": "exemplar|average|weak", "feedback": "justification focusing on teamwork ideas not presentation"},
-    "creativity": {"score": <integer 0-15>, "status": "exemplar|average|weak", "feedback": "justification focusing on innovation not eloquence"},
-    "scale": {"score": <integer 0-15>, "status": "exemplar|average|weak", "feedback": "justification focusing on implementation concepts not writing quality"},
-    "impact": {"score": <integer 0-20>, "status": "exemplar|average|weak", "feedback": "justification focusing on value understanding not language"},
-    "pitch": {"score": <integer 0-10>, "status": "exemplar|average|weak", "feedback": "justification focusing on consistency and learning not writing skills"}
-  },
-  "overallFeedback": "comprehensive feedback focusing on ideas, innovation, and understanding while completely ignoring spelling/grammar issues",
-  "recommendations": ["actionable recommendation focusing on idea development 1", "content-focused recommendation 2", "innovation-focused recommendation 3"]
-}`;
+### 3. Quality of Documentation (5 marks)
+Assess the professional quality of presentation:
+- Clarity of writing and expression
+- Proper formatting (headers, sections, page numbers, consistent fonts)
+- Appropriate referencing style (APA, MLA, or IEEE)
+- Effective use of tables, figures, and charts with proper labels and captions
+- Professional presentation overall
+
+Award marks based on:
+- 5 marks: Excellent clarity, professional formatting, proper references, well-designed visuals
+- 4 marks: Good clarity, consistent formatting, mostly proper references, clear visuals
+- 3 marks: Acceptable clarity, basic formatting, some referencing issues, adequate visuals
+- 2 marks: Poor clarity, inconsistent formatting, weak references, poor visuals
+- 0-1 marks: Very poor documentation quality throughout
+
+### 4. Originality & Effort (5 marks)
+Determine the authenticity and effort invested:
+- Shows independent thinking and original work
+- Evidence of personal research and investigation
+- Avoids direct copy-paste from sources
+- Demonstrates genuine effort and engagement with the topic
+- Unique perspectives or approaches
+
+Award marks based on:
+- 5 marks: Highly original work, substantial effort evident, independent research clear
+- 4 marks: Good originality, strong effort shown, mostly independent work
+- 3 marks: Some originality, moderate effort, occasional reliance on sources
+- 2 marks: Limited originality, minimal effort, heavy reliance on existing content
+- 0-1 marks: Copy-paste evident, no original contribution, minimal effort
+
+## OUTPUT FORMAT
+
+Provide your evaluation in the following structured format:
+
+**EVALUATION SUMMARY**
+
+1. Report Completeness & Structure: [X/10 marks]
+   - Justification: [2-3 sentences explaining the score]
+
+2. Depth of Analysis: [X/10 marks]
+   - Justification: [2-3 sentences explaining the score]
+
+3. Quality of Documentation: [X/5 marks]
+   - Justification: [2-3 sentences explaining the score]
+
+4. Originality & Effort: [X/5 marks]
+   - Justification: [2-3 sentences explaining the score]
+
+**TOTAL SCORE: [X/30 marks]**
+
+**STRENGTHS:**
+- [List 3-4 key strengths of the project]
+
+**AREAS FOR IMPROVEMENT:**
+- [List 3-4 specific areas needing improvement]
+
+**OVERALL FEEDBACK:**
+[Provide 3-4 sentences of constructive feedback summarizing the evaluation and offering guidance for improvement]
+
+---
+
+Now evaluate the provided project report according to these criteria. Be fair, constructive, and specific in your assessment.
+      `;
 
       const result = await model.generateContent({
         contents: [
