@@ -715,7 +715,7 @@ Evaluate the project report now and respond ONLY with the JSON format above.
           </div>
         )}
         
-        {/* Results Section */}
+        {/* Results Section - Table Format */}
         {evaluationResults.length > 0 && (
           <div className="border border-gray-200 rounded-lg p-4">
             <div className="flex justify-between items-center mb-3">
@@ -728,97 +728,60 @@ Evaluate the project report now and respond ONLY with the JSON format above.
               </button>
             </div>
             
-            <div className="space-y-6">
-              {evaluationResults.map((result, index) => (
-                <div key={index} className="border rounded-lg p-5 hover:shadow-md transition">
-                  <div className="flex justify-between items-start mb-4">
-                    <h4 className="font-medium text-lg text-gray-800 truncate">{result.fileName}</h4>
-                    {result.error ? (
-                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        Error
-                      </span>
-                    ) : (
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(result.total_score, 30)}`}>
-                        {result.total_score}/30
-                      </span>
-                    )}
-                  </div>
-                  
-                  {result.error ? (
-                    <div className="text-red-500 flex items-start">
-                      <AlertCircle className="mr-2 mt-0.5 flex-shrink-0" size={16} />
-                      <span>{result.error}</span>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {/* Criterion Scores */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className={`p-3 rounded-lg ${getStatusColor(result.criterion1.score, 10)}`}>
-                          <div className="font-medium">Report Completeness and Structure</div>
-                          <div className="text-2xl font-bold">{result.criterion1.score}/10</div>
-                          <div className="text-sm mt-1">{result.criterion1.justification}</div>
-                        </div>
-                        
-                        <div className={`p-3 rounded-lg ${getStatusColor(result.criterion2.score, 10)}`}>
-                          <div className="font-medium">Depth of Analysis</div>
-                          <div className="text-2xl font-bold">{result.criterion2.score}/10</div>
-                          <div className="text-sm mt-1">{result.criterion2.justification}</div>
-                        </div>
-                        
-                        <div className={`p-3 rounded-lg ${getStatusColor(result.criterion3.score, 5)}`}>
-                          <div className="font-medium">Quality of Documentation</div>
-                          <div className="text-2xl font-bold">{result.criterion3.score}/5</div>
-                          <div className="text-sm mt-1">{result.criterion3.justification}</div>
-                        </div>
-                        
-                        <div className={`p-3 rounded-lg ${getStatusColor(result.criterion4.score, 5)}`}>
-                          <div className="font-medium">Originality and Effort</div>
-                          <div className="text-2xl font-bold">{result.criterion4.score}/5</div>
-                          <div className="text-sm mt-1">{result.criterion4.justification}</div>
-                        </div>
-                      </div>
-                      
-                      {/* Strengths */}
-                      {result.strengths && result.strengths.length > 0 && (
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                          <h5 className="font-semibold text-green-800 mb-2">Strengths</h5>
-                          <ul className="space-y-1">
-                            {result.strengths.map((strength, i) => (
-                              <li key={i} className="flex items-start">
-                                <span className="text-green-600 mr-2">•</span>
-                                <span className="text-green-700">{strength}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">File Name</th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Criterion 1<br/><span className="font-normal">(10 marks)</span></th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Criterion 2<br/><span className="font-normal">(10 marks)</span></th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Criterion 3<br/><span className="font-normal">(5 marks)</span></th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Criterion 4<br/><span className="font-normal">(5 marks)</span></th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Total<br/><span className="font-normal">(30 marks)</span></th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {evaluationResults.map((result, index) => (
+                    <tr key={index} className={result.error ? "bg-red-50" : ""}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {result.fileName}
+                        {result.error && (
+                          <div className="text-red-500 text-xs mt-1">Error: {result.error}</div>
+                        )}
+                      </td>
+                      {!result.error && (
+                        <>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                            <span className={`px-2 py-1 rounded-full ${getStatusColor(result.criterion1.score, 10)}`}>
+                              {result.criterion1.score}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                            <span className={`px-2 py-1 rounded-full ${getStatusColor(result.criterion2.score, 10)}`}>
+                              {result.criterion2.score}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                            <span className={`px-2 py-1 rounded-full ${getStatusColor(result.criterion3.score, 5)}`}>
+                              {result.criterion3.score}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                            <span className={`px-2 py-1 rounded-full ${getStatusColor(result.criterion4.score, 5)}`}>
+                              {result.criterion4.score}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                            <span className={`px-2 py-1 rounded-full font-bold ${getStatusColor(result.total_score, 30)}`}>
+                              {result.total_score}
+                            </span>
+                          </td>
+                        </>
                       )}
-                      
-                      {/* Improvements */}
-                      {result.improvements && result.improvements.length > 0 && (
-                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                          <h5 className="font-semibold text-yellow-800 mb-2">Areas for Improvement</h5>
-                          <ul className="space-y-1">
-                            {result.improvements.map((improvement, i) => (
-                              <li key={i} className="flex items-start">
-                                <span className="text-yellow-600 mr-2">•</span>
-                                <span className="text-yellow-700">{improvement}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      
-                      {/* Overall Feedback */}
-                      {result.overall_feedback && (
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                          <h5 className="font-semibold text-blue-800 mb-2">Overall Feedback</h5>
-                          <p className="text-blue-700">{result.overall_feedback}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
