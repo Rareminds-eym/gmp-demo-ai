@@ -485,19 +485,22 @@ Evaluate the project report now and respond ONLY with the JSON format above.
           
           // Evaluate PDF directly (without text extraction)
           const evaluation = await evaluateContent(pdfBlob, file.name);
-          results.push({
+          const result = {
             fileName: file.name,
             ...evaluation
-          });
+          };
+          results.push(result);
+          setEvaluationResults([...results]); // Update results in real-time
         } catch (fileError) {
-          results.push({
+          const errorResult = {
             fileName: file.name,
             error: fileError.message
-          });
+          };
+          results.push(errorResult);
+          setEvaluationResults([...results]); // Update results in real-time
         }
       }
       
-      setEvaluationResults(results);
       setProcessingStatus('');
       setIsProcessing(false);
     } catch (error) {
@@ -542,19 +545,22 @@ Evaluate the project report now and respond ONLY with the JSON format above.
           
           // Evaluate PDF directly (without text extraction)
           const evaluation = await evaluateContent(pdfBlob, file.name);
-          results.push({
+          const result = {
             fileName: file.name,
             ...evaluation
-          });
+          };
+          results.push(result);
+          setEvaluationResults([...results]); // Update results in real-time
         } catch (fileError) {
-          results.push({
+          const errorResult = {
             fileName: file.name,
             error: fileError.message
-          });
+          };
+          results.push(errorResult);
+          setEvaluationResults([...results]); // Update results in real-time
         }
       }
       
-      setEvaluationResults(results);
       setProcessingStatus('');
       setIsProcessing(false);
     } catch (error) {
