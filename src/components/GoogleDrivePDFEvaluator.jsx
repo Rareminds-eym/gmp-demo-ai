@@ -316,9 +316,27 @@ const GoogleDrivePDFEvaluator = () => {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
 
-      // Convert PDF blob to base64
+      // Convert PDF blob to base64 using a more robust approach
       const arrayBuffer = await pdfBlob.arrayBuffer();
-      const base64PDF = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      let base64PDF;
+      
+      // Use a more memory-efficient approach for base64 encoding
+      if (typeof Buffer !== 'undefined') {
+        // Node.js environment
+        base64PDF = Buffer.from(arrayBuffer).toString('base64');
+      } else {
+        // Browser environment - chunk the data to avoid stack overflow
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        const chunkSize = 0x8000; // 32KB chunks
+        
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          const chunk = bytes.subarray(i, i + chunkSize);
+          binary += String.fromCharCode.apply(null, chunk);
+        }
+        
+        base64PDF = btoa(binary);
+      }
 
       // Build the evaluation prompt
       const prompt = `
