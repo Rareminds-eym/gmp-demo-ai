@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { Upload, FileText, Loader2, AlertCircle, CheckCircle, Download, RefreshCw, ChevronRight, ChevronLeft } from 'lucide-react';
+import React, { useState, useCallback, useRef } from 'react';
+import { Upload, FileText, Loader2, AlertCircle, CheckCircle, Download, RefreshCw, ChevronRight, ChevronLeft, Square } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -25,6 +25,9 @@ const GoogleDrivePDFEvaluator = () => {
   // Total file count
   const [totalFileCount, setTotalFileCount] = useState(0);
   const [countingFiles, setCountingFiles] = useState(false);
+  
+  // Ref for cancellation
+  const cancelEvaluationRef = useRef(false);
 
   // Function to load the Google Identity Services script
   const loadGoogleScript = () => {
@@ -283,6 +286,16 @@ const GoogleDrivePDFEvaluator = () => {
     });
   };
 
+  // Function to select all files
+  const selectAllFiles = () => {
+    setSelectedFiles([...driveFiles]);
+  };
+
+  // Function to deselect all files
+  const deselectAllFiles = () => {
+    setSelectedFiles([]);
+  };
+
   // Function to fetch PDF file as blob from Google Drive
   const fetchPDFBlobFromDrive = async (fileId) => {
     try {
@@ -451,11 +464,18 @@ Evaluate the project report now and respond ONLY with the JSON format above.
     setIsProcessing(true);
     setEvaluationResults([]);
     setConnectionError(null);
+    cancelEvaluationRef.current = false;
     
     try {
       const results = [];
       
       for (let i = 0; i < selectedFiles.length; i++) {
+        // Check if evaluation was cancelled
+        if (cancelEvaluationRef.current) {
+          setProcessingStatus('Evaluation cancelled');
+          break;
+        }
+        
         const file = selectedFiles[i];
         setProcessingStatus(`Processing file ${i + 1} of ${selectedFiles.length}: ${file.name}`);
         
@@ -485,6 +505,69 @@ Evaluate the project report now and respond ONLY with the JSON format above.
       setIsProcessing(false);
       setProcessingStatus('');
     }
+  };
+
+  // Function to evaluate all PDFs
+  const evaluateAllPDFs = async () => {
+    if (driveFiles.length === 0) {
+      setConnectionError('No PDF files found to evaluate');
+      return;
+    }
+    
+    // Select all files for evaluation
+    setSelectedFiles([...driveFiles]);
+    
+    // Trigger evaluation
+    setIsProcessing(true);
+    setEvaluationResults([]);
+    setConnectionError(null);
+    cancelEvaluationRef.current = false;
+    
+    try {
+      const results = [];
+      
+      for (let i = 0; i < driveFiles.length; i++) {
+        // Check if evaluation was cancelled
+        if (cancelEvaluationRef.current) {
+          setProcessingStatus('Evaluation cancelled');
+          break;
+        }
+        
+        const file = driveFiles[i];
+        setProcessingStatus(`Processing file ${i + 1} of ${driveFiles.length}: ${file.name}`);
+        
+        try {
+          // Fetch PDF from Google Drive
+          const pdfBlob = await fetchPDFBlobFromDrive(file.id);
+          
+          // Evaluate PDF directly (without text extraction)
+          const evaluation = await evaluateContent(pdfBlob, file.name);
+          results.push({
+            fileName: file.name,
+            ...evaluation
+          });
+        } catch (fileError) {
+          results.push({
+            fileName: file.name,
+            error: fileError.message
+          });
+        }
+      }
+      
+      setEvaluationResults(results);
+      setProcessingStatus('');
+      setIsProcessing(false);
+    } catch (error) {
+      setConnectionError('Failed to evaluate PDFs: ' + error.message);
+      setIsProcessing(false);
+      setProcessingStatus('');
+    }
+  };
+
+  // Function to cancel evaluation
+  const cancelEvaluation = () => {
+    cancelEvaluationRef.current = true;
+    setProcessingStatus('Cancelling evaluation...');
   };
 
   // Function to clear results
@@ -598,20 +681,29 @@ Evaluate the project report now and respond ONLY with the JSON format above.
             {!isProcessing && driveFiles.length > 0 ? (
               <>
                 <div className="mb-2 flex justify-between items-center">
-                  <button
-                    onClick={() => {
-                      if (selectedFiles.length === driveFiles.length) {
-                        // If all files are selected, deselect all
-                        setSelectedFiles([]);
-                      } else {
-                        // Otherwise, select all files
-                        setSelectedFiles([...driveFiles]);
-                      }
-                    }}
-                    className="text-sm text-blue-600 hover:text-blue-800"
-                  >
-                    {selectedFiles.length === driveFiles.length ? 'Deselect All' : 'Select All'}
-                  </button>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => {
+                        if (selectedFiles.length === driveFiles.length) {
+                          deselectAllFiles();
+                        } else {
+                          selectAllFiles();
+                        }
+                      }}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      {selectedFiles.length === driveFiles.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                    
+                    {/* Auto-evaluate all button */}
+                    <button
+                      onClick={evaluateAllPDFs}
+                      disabled={isProcessing}
+                      className="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded transition disabled:opacity-50"
+                    >
+                      Evaluate All
+                    </button>
+                  </div>
                   
                   {/* Pagination Controls */}
                   <div className="flex items-center space-x-2">
@@ -676,24 +768,25 @@ Evaluate the project report now and respond ONLY with the JSON format above.
             ) : null}
             
             {selectedFiles.length > 0 && (
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={evaluatePDFs}
-                  disabled={isProcessing}
-                  className="flex items-center bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition disabled:opacity-50"
-                >
-                  {isProcessing ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {processingStatus || 'Processing...'}
-                    </>
-                  ) : (
-                    <>
-                      <Download className="mr-2" size={16} />
-                      Evaluate Selected PDFs
-                    </>
-                  )}
-                </button>
+              <div className="mt-4 flex justify-end space-x-2">
+                {isProcessing ? (
+                  <button
+                    onClick={cancelEvaluation}
+                    className="flex items-center bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition"
+                  >
+                    <Square className="mr-2" size={16} />
+                    Stop Evaluation
+                  </button>
+                ) : (
+                  <button
+                    onClick={evaluatePDFs}
+                    disabled={isProcessing}
+                    className="flex items-center bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition disabled:opacity-50"
+                  >
+                    <Download className="mr-2" size={16} />
+                    Evaluate Selected PDFs
+                  </button>
+                )}
               </div>
             )}
           </div>
