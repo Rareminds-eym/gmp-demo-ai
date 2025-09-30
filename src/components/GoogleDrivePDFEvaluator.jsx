@@ -305,28 +305,8 @@ const GoogleDrivePDFEvaluator = () => {
     }
   };
 
-  // Function to extract text from PDF blob
-  const extractTextFromPDF = async (pdfBlob) => {
-    try {
-      const arrayBuffer = await pdfBlob.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      
-      let fullText = '';
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map(item => item.str).join(' ');
-        fullText += pageText + ' ';
-      }
-      
-      return fullText.trim();
-    } catch (error) {
-      throw new Error(`Failed to extract text from PDF: ${error.message}`);
-    }
-  };
-
   // Function to evaluate content using the Gemini API
-  const evaluateContent = async (content, fileName) => {
+  const evaluateContent = async (pdfBlob, fileName) => {
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey) {
@@ -336,7 +316,11 @@ const GoogleDrivePDFEvaluator = () => {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
 
-      // Build the evaluation prompt (similar to BatchEvaluationProcessor)
+      // Convert PDF blob to base64
+      const arrayBuffer = await pdfBlob.arrayBuffer();
+      const base64PDF = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+      // Build the evaluation prompt
       const prompt = `
 You are an evaluator for a pharmaceutical innovation hackathon using LAZY EVALUATION principles.
 
@@ -349,7 +333,7 @@ You are an evaluator for a pharmaceutical innovation hackathon using LAZY EVALUA
 - If a response shows understanding but is poorly written, still give credit
 
 **STUDENT'S PDF CONTENT:**
-${content}
+Analyze the entire PDF document provided. Extract and evaluate the content from all sections.
 
 **EVALUATION FOCUS:**
 - CONTENT and IDEAS are what matter
@@ -386,7 +370,20 @@ Return ONLY a valid JSON object with this structure:
 }`;
 
       const result = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  mimeType: "application/pdf",
+                  data: base64PDF
+                }
+              }
+            ]
+          }
+        ],
         generationConfig: {
           temperature: 0.3,
           maxOutputTokens: 3000,
@@ -431,11 +428,8 @@ Return ONLY a valid JSON object with this structure:
           // Fetch PDF from Google Drive
           const pdfBlob = await fetchPDFBlobFromDrive(file.id);
           
-          // Extract text from PDF
-          const textContent = await extractTextFromPDF(pdfBlob);
-          
-          // Evaluate content
-          const evaluation = await evaluateContent(textContent, file.name);
+          // Evaluate PDF directly (without text extraction)
+          const evaluation = await evaluateContent(pdfBlob, file.name);
           results.push({
             fileName: file.name,
             ...evaluation
