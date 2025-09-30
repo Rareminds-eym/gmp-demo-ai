@@ -140,7 +140,7 @@ const GoogleDrivePDFEvaluator = () => {
   const fetchFilesFromFolder = async (token, pageToken = null) => {
     try {
       // Using the complete folder ID from the provided URL
-      const folderId = '1IsUJV36Mi4WBJUjzOkK_bWqC79LQY7AiKLluNpOYnpo7ALlltXRs8y0sYarDbUn3WMA70LuI';
+      const folderId = '1V2yU6hLMB9LGy2zOsHTfSPVkeTGH-8Pq_67DIO36xSZKumRHcwxKchOYnGWq055_t_LZd8lV';
       
       // Build query with pagination
       let query = `q='${folderId}' in parents and mimeType = 'application/pdf'&fields=files(id,name,mimeType),nextPageToken&pageSize=100`;
@@ -340,102 +340,68 @@ const GoogleDrivePDFEvaluator = () => {
 
       // Build the evaluation prompt
       const prompt = `
-You are an experienced college professor evaluating a Food Safety and Quality Management project report. Analyze the provided PDF document according to the following rubric with a total of 30 marks:
+You are an experienced college professor evaluating a Food Safety and Quality Management project report. Analyze the document and provide scores based on the rubric below.
 
-## EVALUATION RUBRIC
+EVALUATION RUBRIC (Total: 30 marks):
 
-### 1. Report Completeness & Structure (10 marks)
-Assess whether the report includes ALL required sections:
-- Introduction (with clear background, objectives, and scope)
-- Methodology (detailed approach, tools, and procedures used)
-- Findings (comprehensive results and observations)
-- Conclusion (summary, implications, and recommendations)
-- References (properly cited sources)
+Criterion 1 - Report Completeness and Structure (10 marks):
+Check if the report contains Introduction, Methodology, Findings, Conclusion, and References sections. The report should be well-organized with logical flow.
+Score 9-10: All sections present, excellent structure
+Score 7-8: All sections present, good organization
+Score 5-6: Most sections present, some gaps
+Score 3-4: Several sections missing
+Score 0-2: Major sections missing
 
-Award marks based on:
-- 9-10 marks: All sections present, well-organized, logical flow, excellent structure
-- 7-8 marks: All sections present, good organization, minor structural issues
-- 5-6 marks: Most sections present, adequate organization, some gaps
-- 3-4 marks: Several sections missing or poorly organized
-- 0-2 marks: Incomplete report, major sections missing
+Criterion 2 - Depth of Analysis (10 marks):
+Evaluate understanding of FSQM concepts, analytical insights, pattern recognition, and relevance to food safety and quality management principles.
+Score 9-10: Exceptional analysis with deep insights
+Score 7-8: Strong analysis with good insights
+Score 5-6: Adequate analysis with basic insights
+Score 3-4: Superficial analysis
+Score 0-2: No meaningful analysis
 
-### 2. Depth of Analysis (10 marks)
-Evaluate the student's understanding and analytical capabilities:
-- Demonstrates clear understanding of FSQM (Food Safety & Quality Management) concepts
-- Provides analytical insights beyond superficial observations
-- Shows pattern recognition and critical thinking
-- Connects theory to practical applications
-- Relevance to FSQM principles (HACCP, GMP, quality control, food safety standards)
+Criterion 3 - Quality of Documentation (5 marks):
+Assess clarity of writing, formatting consistency, proper referencing, and quality of tables and figures.
+Score 5: Excellent quality throughout
+Score 4: Good quality with minor issues
+Score 3: Acceptable quality
+Score 2: Poor quality
+Score 0-1: Very poor quality
 
-Award marks based on:
-- 9-10 marks: Exceptional analysis, deep insights, excellent FSQM application, sophisticated pattern recognition
-- 7-8 marks: Strong analysis, good insights, clear FSQM relevance, identifies key patterns
-- 5-6 marks: Adequate analysis, basic insights, some FSQM connection, limited patterns
-- 3-4 marks: Superficial analysis, weak insights, minimal FSQM relevance
-- 0-2 marks: No meaningful analysis, lacks understanding
+Criterion 4 - Originality and Effort (5 marks):
+Determine if the work shows independent thinking, avoids copy-paste, and demonstrates genuine effort.
+Score 5: Highly original with substantial effort
+Score 4: Good originality and effort
+Score 3: Some originality, moderate effort
+Score 2: Limited originality
+Score 0-1: Copy-paste evident, minimal effort
 
-### 3. Quality of Documentation (5 marks)
-Assess the professional quality of presentation:
-- Clarity of writing and expression
-- Proper formatting (headers, sections, page numbers, consistent fonts)
-- Appropriate referencing style (APA, MLA, or IEEE)
-- Effective use of tables, figures, and charts with proper labels and captions
-- Professional presentation overall
+Provide your evaluation in this exact JSON format:
 
-Award marks based on:
-- 5 marks: Excellent clarity, professional formatting, proper references, well-designed visuals
-- 4 marks: Good clarity, consistent formatting, mostly proper references, clear visuals
-- 3 marks: Acceptable clarity, basic formatting, some referencing issues, adequate visuals
-- 2 marks: Poor clarity, inconsistent formatting, weak references, poor visuals
-- 0-1 marks: Very poor documentation quality throughout
+{
+  "criterion1": {
+    "score": 0,
+    "justification": "explanation here"
+  },
+  "criterion2": {
+    "score": 0,
+    "justification": "explanation here"
+  },
+  "criterion3": {
+    "score": 0,
+    "justification": "explanation here"
+  },
+  "criterion4": {
+    "score": 0,
+    "justification": "explanation here"
+  },
+  "total_score": 0,
+  "strengths": ["strength 1", "strength 2", "strength 3"],
+  "improvements": ["improvement 1", "improvement 2", "improvement 3"],
+  "overall_feedback": "comprehensive feedback here"
+}
 
-### 4. Originality & Effort (5 marks)
-Determine the authenticity and effort invested:
-- Shows independent thinking and original work
-- Evidence of personal research and investigation
-- Avoids direct copy-paste from sources
-- Demonstrates genuine effort and engagement with the topic
-- Unique perspectives or approaches
-
-Award marks based on:
-- 5 marks: Highly original work, substantial effort evident, independent research clear
-- 4 marks: Good originality, strong effort shown, mostly independent work
-- 3 marks: Some originality, moderate effort, occasional reliance on sources
-- 2 marks: Limited originality, minimal effort, heavy reliance on existing content
-- 0-1 marks: Copy-paste evident, no original contribution, minimal effort
-
-## OUTPUT FORMAT
-
-Provide your evaluation in the following structured format:
-
-**EVALUATION SUMMARY**
-
-1. Report Completeness & Structure: [X/10 marks]
-   - Justification: [2-3 sentences explaining the score]
-
-2. Depth of Analysis: [X/10 marks]
-   - Justification: [2-3 sentences explaining the score]
-
-3. Quality of Documentation: [X/5 marks]
-   - Justification: [2-3 sentences explaining the score]
-
-4. Originality & Effort: [X/5 marks]
-   - Justification: [2-3 sentences explaining the score]
-
-**TOTAL SCORE: [X/30 marks]**
-
-**STRENGTHS:**
-- [List 3-4 key strengths of the project]
-
-**AREAS FOR IMPROVEMENT:**
-- [List 3-4 specific areas needing improvement]
-
-**OVERALL FEEDBACK:**
-[Provide 3-4 sentences of constructive feedback summarizing the evaluation and offering guidance for improvement]
-
----
-
-Now evaluate the provided project report according to these criteria. Be fair, constructive, and specific in your assessment.
+Evaluate the project report now and respond ONLY with the JSON format above.
       `;
 
       const result = await model.generateContent({
@@ -524,6 +490,15 @@ Now evaluate the provided project report according to these criteria. Be fair, c
   // Function to clear results
   const clearResults = () => {
     setEvaluationResults([]);
+  };
+
+  // Function to get status color based on score
+  const getStatusColor = (score, maxScore) => {
+    const percentage = (score / maxScore) * 100;
+    if (percentage >= 80) return 'bg-green-100 text-green-800';
+    if (percentage >= 60) return 'bg-blue-100 text-blue-800';
+    if (percentage >= 40) return 'bg-yellow-100 text-yellow-800';
+    return 'bg-red-100 text-red-800';
   };
 
   return (
@@ -753,50 +728,94 @@ Now evaluate the provided project report according to these criteria. Be fair, c
               </button>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-6">
               {evaluationResults.map((result, index) => (
-                <div 
-                  key={index} 
-                  className="border rounded-lg p-4 hover:shadow-md transition"
-                >
-                  <div className="flex justify-between items-start">
-                    <h4 className="font-medium text-gray-800 truncate">{result.fileName}</h4>
-                    {result.status && (
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        result.status === 'exemplar' ? 'bg-green-100 text-green-800' :
-                        result.status === 'average' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {result.status}
+                <div key={index} className="border rounded-lg p-5 hover:shadow-md transition">
+                  <div className="flex justify-between items-start mb-4">
+                    <h4 className="font-medium text-lg text-gray-800 truncate">{result.fileName}</h4>
+                    {result.error ? (
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                        Error
+                      </span>
+                    ) : (
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(result.total_score, 30)}`}>
+                        {result.total_score}/30
                       </span>
                     )}
                   </div>
                   
                   {result.error ? (
-                    <div className="mt-3 text-red-500 text-sm">
-                      <AlertCircle className="inline mr-1" size={16} />
-                      {result.error}
+                    <div className="text-red-500 flex items-start">
+                      <AlertCircle className="mr-2 mt-0.5 flex-shrink-0" size={16} />
+                      <span>{result.error}</span>
                     </div>
                   ) : (
-                    <>
-                      <div className="mt-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-600">Score:</span>
-                          <span className="font-bold text-lg">{result.totalScore}/70</span>
+                    <div className="space-y-4">
+                      {/* Criterion Scores */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className={`p-3 rounded-lg ${getStatusColor(result.criterion1.score, 10)}`}>
+                          <div className="font-medium">Report Completeness and Structure</div>
+                          <div className="text-2xl font-bold">{result.criterion1.score}/10</div>
+                          <div className="text-sm mt-1">{result.criterion1.justification}</div>
                         </div>
                         
-                        <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                          <div 
-                            className="h-2 rounded-full bg-blue-600" 
-                            style={{ width: `${(result.totalScore / 70) * 100}%` }}
-                          ></div>
+                        <div className={`p-3 rounded-lg ${getStatusColor(result.criterion2.score, 10)}`}>
+                          <div className="font-medium">Depth of Analysis</div>
+                          <div className="text-2xl font-bold">{result.criterion2.score}/10</div>
+                          <div className="text-sm mt-1">{result.criterion2.justification}</div>
+                        </div>
+                        
+                        <div className={`p-3 rounded-lg ${getStatusColor(result.criterion3.score, 5)}`}>
+                          <div className="font-medium">Quality of Documentation</div>
+                          <div className="text-2xl font-bold">{result.criterion3.score}/5</div>
+                          <div className="text-sm mt-1">{result.criterion3.justification}</div>
+                        </div>
+                        
+                        <div className={`p-3 rounded-lg ${getStatusColor(result.criterion4.score, 5)}`}>
+                          <div className="font-medium">Originality and Effort</div>
+                          <div className="text-2xl font-bold">{result.criterion4.score}/5</div>
+                          <div className="text-sm mt-1">{result.criterion4.justification}</div>
                         </div>
                       </div>
                       
-                      <div className="mt-3">
-                        <p className="text-sm text-gray-600">{result.overallFeedback}</p>
-                      </div>
-                    </>
+                      {/* Strengths */}
+                      {result.strengths && result.strengths.length > 0 && (
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                          <h5 className="font-semibold text-green-800 mb-2">Strengths</h5>
+                          <ul className="space-y-1">
+                            {result.strengths.map((strength, i) => (
+                              <li key={i} className="flex items-start">
+                                <span className="text-green-600 mr-2">•</span>
+                                <span className="text-green-700">{strength}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {/* Improvements */}
+                      {result.improvements && result.improvements.length > 0 && (
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                          <h5 className="font-semibold text-yellow-800 mb-2">Areas for Improvement</h5>
+                          <ul className="space-y-1">
+                            {result.improvements.map((improvement, i) => (
+                              <li key={i} className="flex items-start">
+                                <span className="text-yellow-600 mr-2">•</span>
+                                <span className="text-yellow-700">{improvement}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {/* Overall Feedback */}
+                      {result.overall_feedback && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                          <h5 className="font-semibold text-blue-800 mb-2">Overall Feedback</h5>
+                          <p className="text-blue-700">{result.overall_feedback}</p>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}
