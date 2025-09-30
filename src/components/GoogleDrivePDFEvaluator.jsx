@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Upload, FileText, Loader2, AlertCircle, CheckCircle, Download, RefreshCw } from 'lucide-react';
+import { Upload, FileText, Loader2, AlertCircle, CheckCircle, Download, RefreshCw, ChevronRight, ChevronLeft } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -16,6 +16,10 @@ const GoogleDrivePDFEvaluator = () => {
   const [processingStatus, setProcessingStatus] = useState('');
   const [accessToken, setAccessToken] = useState(null);
   const [gapiLoaded, setGapiLoaded] = useState(false);
+  // Pagination state
+  const [nextPageToken, setNextPageToken] = useState(null);
+  const [hasMoreFiles, setHasMoreFiles] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Function to load the Google Identity Services script
   const loadGoogleScript = () => {
@@ -104,7 +108,7 @@ const GoogleDrivePDFEvaluator = () => {
           setIsConnected(true);
           setProcessingStatus('Fetching files from Google Drive...');
           
-          // Fetch files from the specific folder
+          // Fetch first page of files from the specific folder
           fetchFilesFromFolder(response.access_token);
         },
       });
@@ -118,14 +122,20 @@ const GoogleDrivePDFEvaluator = () => {
     }
   };
 
-  // Function to fetch files from a specific Google Drive folder
-  const fetchFilesFromFolder = async (token) => {
+  // Function to fetch files from a specific Google Drive folder with pagination
+  const fetchFilesFromFolder = async (token, pageToken = null) => {
     try {
       // Using the complete folder ID from the provided URL
       const folderId = '1IsUJV36Mi4WBJUjzOkK_bWqC79LQY7AiKLluNpOYnpo7ALlltXRs8y0sYarDbUn3WMA70LuI';
       
+      // Build query with pagination
+      let query = `q='${folderId}' in parents and mimeType = 'application/pdf'&fields=files(id,name,mimeType),nextPageToken&pageSize=100`;
+      if (pageToken) {
+        query += `&pageToken=${pageToken}`;
+      }
+      
       const response = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q='${folderId}' in parents and mimeType = 'application/pdf'&fields=files(id,name,mimeType)&key=${import.meta.env.VITE_GOOGLE_DRIVE_API_KEY}`,
+        `https://www.googleapis.com/drive/v3/files?${query}&key=${import.meta.env.VITE_GOOGLE_DRIVE_API_KEY}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -138,13 +148,39 @@ const GoogleDrivePDFEvaluator = () => {
       }
       
       const data = await response.json();
+      
+      // Update pagination state
       setDriveFiles(data.files || []);
+      setNextPageToken(data.nextPageToken || null);
+      setHasMoreFiles(!!data.nextPageToken);
       setIsProcessing(false);
       setProcessingStatus('');
     } catch (error) {
       setConnectionError(`Failed to fetch files from Google Drive: ${error.message}`);
       setIsProcessing(false);
       setProcessingStatus('');
+    }
+  };
+
+  // Function to load next page of files
+  const loadNextPage = () => {
+    if (hasMoreFiles && nextPageToken && accessToken) {
+      setIsProcessing(true);
+      setProcessingStatus('Loading more files...');
+      setCurrentPage(currentPage + 1);
+      fetchFilesFromFolder(accessToken, nextPageToken);
+    }
+  };
+
+  // Function to load previous page of files (if needed)
+  const loadPreviousPage = () => {
+    // For simplicity, we'll just reload the first page
+    if (currentPage > 1 && accessToken) {
+      setIsProcessing(true);
+      setProcessingStatus('Loading previous files...');
+      setCurrentPage(1);
+      setNextPageToken(null);
+      fetchFilesFromFolder(accessToken, null);
     }
   };
 
@@ -155,6 +191,9 @@ const GoogleDrivePDFEvaluator = () => {
     setSelectedFiles([]);
     setAccessToken(null);
     setConnectionError(null);
+    setNextPageToken(null);
+    setHasMoreFiles(true);
+    setCurrentPage(1);
   };
 
   // Function to select files
@@ -415,13 +454,13 @@ Return ONLY a valid JSON object with this structure:
         {isConnected && (
           <div className="border border-gray-200 rounded-lg p-4">
             <div className="flex justify-between items-center mb-3">
-              <h3 className="font-semibold text-lg">Select PDF Files</h3>
+              <h3 className="font-semibold text-lg">Select PDF Files (Page {currentPage})</h3>
               <span className="text-sm text-gray-500">{selectedFiles.length} selected</span>
             </div>
             
             {driveFiles.length > 0 ? (
               <>
-                <div className="mb-2 flex justify-end">
+                <div className="mb-2 flex justify-between items-center">
                   <button
                     onClick={() => {
                       if (selectedFiles.length === driveFiles.length) {
@@ -436,6 +475,30 @@ Return ONLY a valid JSON object with this structure:
                   >
                     {selectedFiles.length === driveFiles.length ? 'Deselect All' : 'Select All'}
                   </button>
+                  
+                  {/* Pagination Controls */}
+                  <div className="flex items-center space-x-2">
+                    {currentPage > 1 && (
+                      <button
+                        onClick={loadPreviousPage}
+                        disabled={isProcessing}
+                        className="flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm hover:bg-gray-100 disabled:opacity-50"
+                      >
+                        <ChevronLeft size={16} />
+                        Previous
+                      </button>
+                    )}
+                    {hasMoreFiles && (
+                      <button
+                        onClick={loadNextPage}
+                        disabled={isProcessing}
+                        className="flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm hover:bg-gray-100 disabled:opacity-50"
+                      >
+                        Next
+                        <ChevronRight size={16} />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
                   {driveFiles.map((file) => (
@@ -464,6 +527,9 @@ Return ONLY a valid JSON object with this structure:
                       </div>
                     </div>
                   ))}
+                </div>
+                <div className="mt-2 text-sm text-gray-500 text-right">
+                  Showing {driveFiles.length} files on page {currentPage}
                 </div>
               </>
             ) : (
