@@ -20,6 +20,8 @@ const GoogleDrivePDFEvaluator = () => {
   const [nextPageToken, setNextPageToken] = useState(null);
   const [hasMoreFiles, setHasMoreFiles] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
+  // Store page tokens for navigation
+  const [pageTokens, setPageTokens] = useState([]);
 
   // Function to load the Google Identity Services script
   const loadGoogleScript = () => {
@@ -108,6 +110,11 @@ const GoogleDrivePDFEvaluator = () => {
           setIsConnected(true);
           setProcessingStatus('Fetching files from Google Drive...');
           
+          // Reset pagination state
+          setPageTokens([]);
+          setCurrentPage(1);
+          setNextPageToken(null);
+          
           // Fetch first page of files from the specific folder
           fetchFilesFromFolder(response.access_token);
         },
@@ -167,20 +174,29 @@ const GoogleDrivePDFEvaluator = () => {
     if (hasMoreFiles && nextPageToken && accessToken) {
       setIsProcessing(true);
       setProcessingStatus('Loading more files...');
+      
+      // Store current page token for potential back navigation
+      setPageTokens(prev => [...prev, nextPageToken]);
       setCurrentPage(currentPage + 1);
       fetchFilesFromFolder(accessToken, nextPageToken);
     }
   };
 
-  // Function to load previous page of files (if needed)
+  // Function to load previous page of files
   const loadPreviousPage = () => {
-    // For simplicity, we'll just reload the first page
     if (currentPage > 1 && accessToken) {
       setIsProcessing(true);
       setProcessingStatus('Loading previous files...');
-      setCurrentPage(1);
-      setNextPageToken(null);
-      fetchFilesFromFolder(accessToken, null);
+      
+      // Calculate the page token for the previous page
+      const newPageTokens = [...pageTokens];
+      newPageTokens.pop(); // Remove the current page token
+      setPageTokens(newPageTokens);
+      
+      const previousPageToken = newPageTokens.length > 0 ? newPageTokens[newPageTokens.length - 1] : null;
+      
+      setCurrentPage(currentPage - 1);
+      fetchFilesFromFolder(accessToken, previousPageToken);
     }
   };
 
@@ -194,6 +210,7 @@ const GoogleDrivePDFEvaluator = () => {
     setNextPageToken(null);
     setHasMoreFiles(true);
     setCurrentPage(1);
+    setPageTokens([]);
   };
 
   // Function to select files
@@ -458,7 +475,15 @@ Return ONLY a valid JSON object with this structure:
               <span className="text-sm text-gray-500">{selectedFiles.length} selected</span>
             </div>
             
-            {driveFiles.length > 0 ? (
+            {/* Loading Animation */}
+            {isProcessing && processingStatus.includes('Loading') && (
+              <div className="flex flex-col items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                <p className="mt-2 text-gray-600">{processingStatus}</p>
+              </div>
+            )}
+            
+            {!isProcessing && driveFiles.length > 0 ? (
               <>
                 <div className="mb-2 flex justify-between items-center">
                   <button
@@ -532,11 +557,11 @@ Return ONLY a valid JSON object with this structure:
                   Showing {driveFiles.length} files on page {currentPage}
                 </div>
               </>
-            ) : (
+            ) : !isProcessing && driveFiles.length === 0 ? (
               <div className="text-center py-4 text-gray-500">
                 No PDF files found in your Google Drive folder
               </div>
-            )}
+            ) : null}
             
             {selectedFiles.length > 0 && (
               <div className="mt-4 flex justify-end">
@@ -563,7 +588,7 @@ Return ONLY a valid JSON object with this structure:
         )}
         
         {/* Processing Status */}
-        {isProcessing && processingStatus && (
+        {isProcessing && processingStatus && !processingStatus.includes('Loading') && (
           <div className="border border-gray-200 rounded-lg p-4">
             <div className="flex items-center">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
