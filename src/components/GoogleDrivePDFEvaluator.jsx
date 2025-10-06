@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useRef } from 'react';
-import { Upload, FileText, Loader2, AlertCircle, CheckCircle, Download, RefreshCw, ChevronRight, ChevronLeft, Square } from 'lucide-react';
-import * as pdfjsLib from 'pdfjs-dist';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { AlertCircle, CheckCircle, ChevronLeft, ChevronRight, Download, FileText, Loader2, RefreshCw, Square, Upload } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
+import { useRef, useState } from 'react';
 
 // Set the worker path for PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
@@ -353,7 +353,7 @@ const GoogleDrivePDFEvaluator = () => {
 
       // Build the evaluation prompt
       const prompt = `
-You are an experienced college professor evaluating a Food Safety and Quality Management project report. Analyze the document and provide scores based on the rubric below.
+You are an experienced college professor evaluating a Food Safety and Quality Management project report. Analyze the document and provide competetive scores using upto 2 decimals based on the rubric below.
 
 EVALUATION RUBRIC (Total: 30 marks):
 
