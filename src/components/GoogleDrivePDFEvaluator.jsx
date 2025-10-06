@@ -1,7 +1,8 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Upload, FileText, Loader2, AlertCircle, CheckCircle, Download, RefreshCw, ChevronRight, ChevronLeft, Square } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { savePDFEvaluationResults, savePDFEvaluationError, testSupabaseConnection, checkPDFEvaluationExists } from '../lib/savePDFEvaluationResults';
 
 // Set the worker path for PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
@@ -25,9 +26,40 @@ const GoogleDrivePDFEvaluator = () => {
   // Total file count
   const [totalFileCount, setTotalFileCount] = useState(0);
   const [countingFiles, setCountingFiles] = useState(false);
+  // Session ID for database tracking
+  const [sessionId, setSessionId] = useState(null);
   
   // Ref for cancellation
   const cancelEvaluationRef = useRef(false);
+
+  // Test Supabase connection on component mount
+  useEffect(() => {
+    const testConnection = async () => {
+      const result = await testSupabaseConnection();
+      if (!result.success) {
+        console.error('Supabase connection failed:', result.error);
+        if (result.suggestion) {
+          console.warn('Suggestion:', result.suggestion);
+        }
+        setConnectionError('Database connection failed: ' + result.error + (result.suggestion ? '. ' + result.suggestion : ''));
+      } else {
+        console.log('Database connection verified successfully');
+        // Clear any previous connection errors
+        if (connectionError && connectionError.includes('Database connection failed')) {
+          setConnectionError(null);
+        }
+      }
+    };
+    
+    testConnection();
+  }, []);
+
+  // Generate a unique session ID for tracking evaluations
+  const generateSessionId = () => {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const randomId = Math.random().toString(36).substr(2, 9);
+    return `pdf_eval_${timestamp}_${randomId}`;
+  };
 
   // Function to load the Google Identity Services script
   const loadGoogleScript = () => {
@@ -121,6 +153,11 @@ const GoogleDrivePDFEvaluator = () => {
           setCurrentPage(1);
           setNextPageToken(null);
           setTotalFileCount(0);
+          
+          // Generate new session ID for this evaluation session
+          const newSessionId = generateSessionId();
+          setSessionId(newSessionId);
+          console.log('Generated session ID:', newSessionId);
           
           // Fetch first page of files from the specific folder
           fetchFilesFromFolder(response.access_token);
@@ -272,6 +309,7 @@ const GoogleDrivePDFEvaluator = () => {
     setCurrentPage(1);
     setPageTokens([]);
     setTotalFileCount(0);
+    setSessionId(null);
   };
 
   // Function to select files
@@ -480,17 +518,91 @@ Evaluate the project report now and respond ONLY with the JSON format above.
         setProcessingStatus(`Processing file ${i + 1} of ${selectedFiles.length}: ${file.name}`);
         
         try {
+          // Check if this file has already been evaluated
+          console.log(`Checking if ${file.name} has already been evaluated...`);
+          const existingEvaluation = await checkPDFEvaluationExists(file.name, file.id);
+          
+          if (existingEvaluation.exists && existingEvaluation.isSuccess) {
+            console.log(`⏭️ Skipping ${file.name} - already evaluated successfully`);
+            
+            try {
+              // Add the existing result to the display
+              const existingResult = {
+                fileName: file.name,
+                criterion1: { score: existingEvaluation.data.criterion1_score, justification: existingEvaluation.data.criterion1_justification },
+                criterion2: { score: existingEvaluation.data.criterion2_score, justification: existingEvaluation.data.criterion2_justification },
+                criterion3: { score: existingEvaluation.data.criterion3_score, justification: existingEvaluation.data.criterion3_justification },
+                criterion4: { score: existingEvaluation.data.criterion4_score, justification: existingEvaluation.data.criterion4_justification },
+                total_score: existingEvaluation.data.total_score,
+                strengths: Array.isArray(existingEvaluation.data.strengths) ? existingEvaluation.data.strengths : (existingEvaluation.data.strengths ? JSON.parse(existingEvaluation.data.strengths) : []),
+                improvements: Array.isArray(existingEvaluation.data.improvements) ? existingEvaluation.data.improvements : (existingEvaluation.data.improvements ? JSON.parse(existingEvaluation.data.improvements) : []),
+                overall_feedback: existingEvaluation.data.overall_feedback,
+                isExisting: true // Flag to indicate this is from database
+              };
+              
+              results.push(existingResult);
+              setEvaluationResults([...results]);
+              continue; // Skip to next file
+            } catch (parseError) {
+              console.error(`Error parsing existing evaluation for ${file.name}:`, parseError);
+              console.log(`🔄 Re-evaluating ${file.name} due to data parsing error`);
+              // Continue with normal evaluation if parsing fails
+            }
+          } else if (existingEvaluation.exists && !existingEvaluation.isSuccess) {
+            console.log(`🔄 Re-evaluating ${file.name} - previous evaluation failed`);
+          } else {
+            console.log(`✨ Evaluating ${file.name} - first time`);
+          }
+          
+          const startTime = Date.now();
+          
           // Fetch PDF from Google Drive
           const pdfBlob = await fetchPDFBlobFromDrive(file.id);
           
           // Evaluate PDF directly (without text extraction)
           const evaluation = await evaluateContent(pdfBlob, file.name);
+          
+          const processingDuration = Date.now() - startTime;
+          
           const result = {
             fileName: file.name,
             ...evaluation
           };
           results.push(result);
           setEvaluationResults([...results]); // Update results in real-time
+          
+          // Save successful evaluation to database
+          try {
+            console.log('Raw evaluation result from AI:', evaluation);
+            
+            const evaluationData = {
+              fileName: file.name,
+              fileId: file.id,
+              fileSize: pdfBlob.size,
+              criterion1: evaluation.criterion1,
+              criterion2: evaluation.criterion2,
+              criterion3: evaluation.criterion3,
+              criterion4: evaluation.criterion4,
+              total_score: evaluation.total_score,
+              strengths: evaluation.strengths || [],
+              improvements: evaluation.improvements || [],
+              overall_feedback: evaluation.overall_feedback,
+              sessionId: sessionId,
+              driveFolderId: '1V2yU6hLMB9LGy2zOsHTfSPVkeTGH-8Pq_67DIO36xSZKumRHcwxKchOYnGWq055_t_LZd8lV',
+              processingDurationMs: processingDuration
+            };
+            
+            console.log('Prepared evaluation data for database:', evaluationData);
+            
+            const { data, error } = await savePDFEvaluationResults(evaluationData);
+            if (error) {
+              console.error('Failed to save evaluation to database:', error);
+            } else {
+              console.log('Successfully saved evaluation to database:', data?.id);
+            }
+          } catch (dbError) {
+            console.error('Database save error:', dbError);
+          }
         } catch (fileError) {
           const errorResult = {
             fileName: file.name,
@@ -498,6 +610,26 @@ Evaluate the project report now and respond ONLY with the JSON format above.
           };
           results.push(errorResult);
           setEvaluationResults([...results]); // Update results in real-time
+          
+          // Save error to database
+          try {
+            const errorData = {
+              fileName: file.name,
+              fileId: file.id,
+              error_message: fileError.message,
+              sessionId: sessionId,
+              driveFolderId: '1V2yU6hLMB9LGy2zOsHTfSPVkeTGH-8Pq_67DIO36xSZKumRHcwxKchOYnGWq055_t_LZd8lV'
+            };
+            
+            const { data, error } = await savePDFEvaluationError(errorData);
+            if (error) {
+              console.error('Failed to save evaluation error to database:', error);
+            } else {
+              console.log('Successfully saved evaluation error to database:', data?.id);
+            }
+          } catch (dbError) {
+            console.error('Database error save error:', dbError);
+          }
         }
       }
       
@@ -540,17 +672,91 @@ Evaluate the project report now and respond ONLY with the JSON format above.
         setProcessingStatus(`Processing file ${i + 1} of ${driveFiles.length}: ${file.name}`);
         
         try {
+          // Check if this file has already been evaluated
+          console.log(`Checking if ${file.name} has already been evaluated...`);
+          const existingEvaluation = await checkPDFEvaluationExists(file.name, file.id);
+          
+          if (existingEvaluation.exists && existingEvaluation.isSuccess) {
+            console.log(`⏭️ Skipping ${file.name} - already evaluated successfully`);
+            
+            try {
+              // Add the existing result to the display
+              const existingResult = {
+                fileName: file.name,
+                criterion1: { score: existingEvaluation.data.criterion1_score, justification: existingEvaluation.data.criterion1_justification },
+                criterion2: { score: existingEvaluation.data.criterion2_score, justification: existingEvaluation.data.criterion2_justification },
+                criterion3: { score: existingEvaluation.data.criterion3_score, justification: existingEvaluation.data.criterion3_justification },
+                criterion4: { score: existingEvaluation.data.criterion4_score, justification: existingEvaluation.data.criterion4_justification },
+                total_score: existingEvaluation.data.total_score,
+                strengths: Array.isArray(existingEvaluation.data.strengths) ? existingEvaluation.data.strengths : (existingEvaluation.data.strengths ? JSON.parse(existingEvaluation.data.strengths) : []),
+                improvements: Array.isArray(existingEvaluation.data.improvements) ? existingEvaluation.data.improvements : (existingEvaluation.data.improvements ? JSON.parse(existingEvaluation.data.improvements) : []),
+                overall_feedback: existingEvaluation.data.overall_feedback,
+                isExisting: true // Flag to indicate this is from database
+              };
+              
+              results.push(existingResult);
+              setEvaluationResults([...results]);
+              continue; // Skip to next file
+            } catch (parseError) {
+              console.error(`Error parsing existing evaluation for ${file.name}:`, parseError);
+              console.log(`🔄 Re-evaluating ${file.name} due to data parsing error`);
+              // Continue with normal evaluation if parsing fails
+            }
+          } else if (existingEvaluation.exists && !existingEvaluation.isSuccess) {
+            console.log(`🔄 Re-evaluating ${file.name} - previous evaluation failed`);
+          } else {
+            console.log(`✨ Evaluating ${file.name} - first time`);
+          }
+          
+          const startTime = Date.now();
+          
           // Fetch PDF from Google Drive
           const pdfBlob = await fetchPDFBlobFromDrive(file.id);
           
           // Evaluate PDF directly (without text extraction)
           const evaluation = await evaluateContent(pdfBlob, file.name);
+          
+          const processingDuration = Date.now() - startTime;
+          
           const result = {
             fileName: file.name,
             ...evaluation
           };
           results.push(result);
           setEvaluationResults([...results]); // Update results in real-time
+          
+          // Save successful evaluation to database
+          try {
+            console.log('Raw evaluation result from AI (evaluateAll):', evaluation);
+            
+            const evaluationData = {
+              fileName: file.name,
+              fileId: file.id,
+              fileSize: pdfBlob.size,
+              criterion1: evaluation.criterion1,
+              criterion2: evaluation.criterion2,
+              criterion3: evaluation.criterion3,
+              criterion4: evaluation.criterion4,
+              total_score: evaluation.total_score,
+              strengths: evaluation.strengths || [],
+              improvements: evaluation.improvements || [],
+              overall_feedback: evaluation.overall_feedback,
+              sessionId: sessionId,
+              driveFolderId: '1V2yU6hLMB9LGy2zOsHTfSPVkeTGH-8Pq_67DIO36xSZKumRHcwxKchOYnGWq055_t_LZd8lV',
+              processingDurationMs: processingDuration
+            };
+            
+            console.log('Prepared evaluation data for database (evaluateAll):', evaluationData);
+            
+            const { data, error } = await savePDFEvaluationResults(evaluationData);
+            if (error) {
+              console.error('Failed to save evaluation to database:', error);
+            } else {
+              console.log('Successfully saved evaluation to database:', data?.id);
+            }
+          } catch (dbError) {
+            console.error('Database save error:', dbError);
+          }
         } catch (fileError) {
           const errorResult = {
             fileName: file.name,
@@ -558,6 +764,26 @@ Evaluate the project report now and respond ONLY with the JSON format above.
           };
           results.push(errorResult);
           setEvaluationResults([...results]); // Update results in real-time
+          
+          // Save error to database
+          try {
+            const errorData = {
+              fileName: file.name,
+              fileId: file.id,
+              error_message: fileError.message,
+              sessionId: sessionId,
+              driveFolderId: '1V2yU6hLMB9LGy2zOsHTfSPVkeTGH-8Pq_67DIO36xSZKumRHcwxKchOYnGWq055_t_LZd8lV'
+            };
+            
+            const { data, error } = await savePDFEvaluationError(errorData);
+            if (error) {
+              console.error('Failed to save evaluation error to database:', error);
+            } else {
+              console.log('Successfully saved evaluation error to database:', data?.id);
+            }
+          } catch (dbError) {
+            console.error('Database error save error:', dbError);
+          }
         }
       }
       
@@ -818,7 +1044,36 @@ Evaluate the project report now and respond ONLY with the JSON format above.
         {evaluationResults.length > 0 && (
           <div className="border border-gray-200 rounded-lg p-4">
             <div className="flex justify-between items-center mb-3">
-              <h3 className="font-semibold text-lg">Evaluation Results</h3>
+              <div>
+                <h3 className="font-semibold text-lg">Evaluation Results</h3>
+                {(() => {
+                  const totalFiles = evaluationResults.length;
+                  const existingFiles = evaluationResults.filter(r => r.isExisting).length;
+                  const newFiles = totalFiles - existingFiles;
+                  const errorFiles = evaluationResults.filter(r => r.error).length;
+                  
+                  return (
+                    <div className="text-sm text-gray-600 mt-1">
+                      Total: {totalFiles} files
+                      {existingFiles > 0 && (
+                        <span className="ml-3 text-blue-600">
+                          📁 {existingFiles} existing
+                        </span>
+                      )}
+                      {newFiles > 0 && (
+                        <span className="ml-3 text-green-600">
+                          ✨ {newFiles} newly evaluated
+                        </span>
+                      )}
+                      {errorFiles > 0 && (
+                        <span className="ml-3 text-red-600">
+                          ⚠️ {errorFiles} errors
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
               <button
                 onClick={clearResults}
                 className="text-sm text-gray-500 hover:text-gray-700"
@@ -843,7 +1098,14 @@ Evaluate the project report now and respond ONLY with the JSON format above.
                   {evaluationResults.map((result, index) => (
                     <tr key={index} className={result.error ? "bg-red-50" : ""}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {result.fileName}
+                        <div className="flex items-center">
+                          {result.fileName}
+                          {result.isExisting && (
+                            <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                              📁 Existing
+                            </span>
+                          )}
+                        </div>
                         {result.error && (
                           <div className="text-red-500 text-xs mt-1">Error: {result.error}</div>
                         )}
